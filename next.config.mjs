@@ -1,0 +1,2 @@
+import { fileURLToPath } from 'node:url';
+export default { outputFileTracingRoot: fileURLToPath(new URL('.', import.meta.url)), output: 'standalone', poweredByHeader: false, serverExternalPackages: ['@libsql/client'], async headers() { return [{ source: '/(.*)', headers: [{key:'X-Content-Type-Options',value:'nosniff'},{key:'Referrer-Policy',value:'strict-origin-when-cross-origin'},{key:'X-Frame-Options',value:'DENY'}] }]; } };

@@ -1,0 +1,15 @@
+services:
+  ahoy:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env.local
+        required: false
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ahoy-data:/app/data
+    restart: unless-stopped
+volumes:
+  ahoy-data:

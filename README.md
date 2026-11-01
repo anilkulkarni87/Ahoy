@@ -61,7 +61,7 @@ Open **http://localhost:3000**. No environment variables are required. Local dem
 
 Read [the step-by-step Instagram guide](docs/instagram-setup.md) before setting up credentials. It explains account types, app setup, callbacks, tester invitations and the access token Ahoy obtains through **Connect account**.
 
-For private owner sign-in, set a generated `ADMIN_TOKEN` in your hosting environment and enter it on the sign-in page. Resend email links remain optional. For durable data and background delivery on Vercel, configure Turso and Inngest. Keep live sends off until your controlled live test is ready. Hosted Cloud and follow confirmation are unavailable.
+For private owner sign-in, set a generated `ADMIN_TOKEN` in your hosting environment and enter it on the sign-in page. Resend email links remain optional. For durable data and background delivery on Vercel, configure Turso and Inngest. Keep live sends off until your controlled live test is ready. Hosted Cloud is unavailable. Optional follow-required campaigns need a controlled live test; see [follow campaigns](docs/follow-campaigns.md).
 
 ## What made the first real connection work?
 

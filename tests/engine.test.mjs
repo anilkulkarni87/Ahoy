@@ -31,3 +31,9 @@ test('explicit click tracking creates a redirect mapped to the exact original UR
  const row=(await db().execute("SELECT * FROM links WHERE tenant='tracked'")).rows[0];
  assert.equal(row.url,'https://destination.example/resource?source=instagram');assert.equal(r.message,'Hey maya\nhttps://ahoy.example/api/go/'+row.id);
 });
+test('retention removes old follow-request resource snapshots with activity',async()=>{
+ const {rollupAndPurge}=await import('../lib/retention.mjs');
+ await db().execute("INSERT INTO activity(id,tenant,comment_id,username,comment,status,created_at) VALUES('old-follow','retention-follow','old-follow','maya','GUIDE','awaiting-follow','2025-01-01T10:00:00Z')");
+ await db().execute("INSERT INTO follow_requests(activity_id,tenant,account_id,user_id,resource_message,profile_url) VALUES('old-follow','retention-follow','ig','user','secret','https://www.instagram.com/studio/')");
+ await rollupAndPurge();assert.equal((await db().execute("SELECT * FROM follow_requests WHERE activity_id='old-follow'")).rows.length,0);
+});

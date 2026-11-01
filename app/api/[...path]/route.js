@@ -47,11 +47,14 @@ export async function GET(req,context) { try {
  const tenant=who.tenant;
  if(route==='state') {
   if(who.demo) await seed(tenant);
-  const list=await campaigns(tenant);
-  const activity=(await query(tenant,'SELECT * FROM activity WHERE tenant=? ORDER BY datetime(created_at) DESC LIMIT 200')).rows;
-  const accounts=who.demo?[{id:'demo-account',username:'the.slow.studio',demo:true}]:(await query(tenant,'SELECT id,username,expires_at,auth_type FROM accounts WHERE tenant=?')).rows;
-  const links=(await query(tenant,'SELECT campaign_id,sum(clicks) AS clicks FROM links WHERE tenant=? GROUP BY campaign_id')).rows;
-  const counts=(await query(tenant,"SELECT count(*) AS comments,sum(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent FROM activity WHERE tenant=?")).rows[0];
+  const [list,activityResult,accountResult,linkResult,countResult]=await Promise.all([
+   campaigns(tenant),
+   query(tenant,'SELECT * FROM activity WHERE tenant=? ORDER BY datetime(created_at) DESC LIMIT 200'),
+   who.demo?Promise.resolve({rows:[{id:'demo-account',username:'the.slow.studio',demo:true}]}):query(tenant,'SELECT id,username,expires_at,auth_type FROM accounts WHERE tenant=?'),
+   query(tenant,'SELECT campaign_id,sum(clicks) AS clicks FROM links WHERE tenant=? GROUP BY campaign_id'),
+   query(tenant,"SELECT count(*) AS comments,sum(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent FROM activity WHERE tenant=?")
+  ]);
+  const activity=activityResult.rows,accounts=accountResult.rows,links=linkResult.rows,counts=countResult.rows[0];
   return json({campaigns:list,activity,accounts,links,counts,demo:who.demo,temporaryStorage:storageConfig().temporary,diagnostics:diagnostics(who.demo?0:accounts.length)});
  }
  if(route==='instagram/connect') {
@@ -159,14 +162,31 @@ export async function POST(req,context) {try {
   if(typeof b.text!=='string'||b.text.length>2200) throw new Error('Write a comment under 2,200 characters.');
   return json(await processComment(tenant,{commentId:randomUUID(),username:String(b.username||'you.creates').slice(0,60),text:b.text,mediaId:b.mediaId||'post-1'},true));
  }
+ if(route==='simulate/follow') {
+  if(!who.demo)throw new Error('Follow simulation is available only in the demo.');
+  if(typeof b.following!=='boolean')throw new Error('Choose a simulated follow status.');
+  const row=(await query(tenant,`SELECT a.id,f.resource_message FROM activity a JOIN follow_requests f ON f.activity_id=a.id WHERE a.tenant=? AND a.id=? AND a.status IN ('awaiting-follow','verification-unavailable')`,[String(b.id)])).rows[0];
+  if(!row)throw new Error('No pending demo follow request found.');
+  await db().execute({sql:'UPDATE activity SET status=?,reason=?,message=CASE WHEN ? THEN ? ELSE message END WHERE tenant=? AND id=?',args:[b.following?'sent':'awaiting-follow',b.following?'Demo follow verified; resource simulated. No Instagram message was sent.':'Demo: not following yet. Resource withheld.',b.following?1:0,row.resource_message,tenant,row.id]});
+  return json((await query(tenant,'SELECT * FROM activity WHERE tenant=? AND id=?',[row.id])).rows[0]);
+ }
  if(route==='activity/retry') {
   const row=(await query(tenant,'SELECT * FROM activity WHERE tenant=? AND id=?',[b.id])).rows[0];if(!row||row.status!=='failed') throw new Error('Only failed deliveries can be retried.');
+  if((await db().execute({sql:'SELECT 1 FROM follow_requests WHERE activity_id=?',args:[row.id]})).rows.length)throw new Error('Check Instagram before starting a new follow request. Gated messages cannot be blindly retried.');
   if(!b.confirmed) throw new Error('Check that Instagram did not deliver this message before retrying.');
   const c=(await campaigns(tenant)).find(c=>c.id===row.campaign_id);
   if(!c) throw new Error('The campaign no longer exists.');
   await db().execute({sql:"UPDATE activity SET status=?,reason=? WHERE tenant=? AND id=?",args:[who.demo?'sent':'queued',who.demo?'Demo retry completed.':'Retry requested by owner.',tenant,row.id]});
   if(!who.demo) await inngest.send({id:'retry:'+randomUUID(),name:'ahoy/comment.ready',data:{id:row.id,accountId:c.accountId}});
   return json({ok:true});
+ }
+ if(route==='accounts/follow-buttons') {
+  if(who.demo)throw new Error('Demo buttons do not require Meta subscriptions.');
+  const account=(await query(tenant,'SELECT * FROM accounts WHERE tenant=? AND id=?',[String(b.id)])).rows[0];
+  if(!account)throw new Error('Account not found.');
+  const result=await meta(`${account.id}/subscribed_apps`,decrypt(account.token),{method:'POST',body:JSON.stringify({subscribed_fields:'comments,messages,messaging_postbacks'})},account.auth_type);
+  if(result.success!==true)throw new Error('Meta did not confirm recheck-button subscriptions. CHECK replies still work.');
+  return json({message:'Account subscribed to button events. Also enable messaging_postbacks in Meta’s webhook settings. Test with a real conversation.'});
  }
  if(route==='accounts/check') {
   if(who.demo) return json({ok:true,message:'This is a sample account. Connect your own after setup.'});
@@ -179,7 +199,7 @@ export async function POST(req,context) {try {
  }
  if(route==='workspace/delete') {
   if(b.confirmation!=='DELETE') throw new Error('Type DELETE to remove this workspace’s data.');
-  await db().batch(['campaigns','activity','accounts','links','opt_outs','daily_stats'].map(table=>({sql:`DELETE FROM ${table} WHERE tenant=?`,args:[tenant]})),'write');return json({ok:true});
+  await db().batch(['campaigns','activity','accounts','links','opt_outs','daily_stats','follow_requests'].map(table=>({sql:`DELETE FROM ${table} WHERE tenant=?`,args:[tenant]})),'write');return json({ok:true});
  }
  return json({error:'Action not found.'},404);
  } catch(e) {console.error('Ahoy action failed:',e.name);return json({error:e.message||'Something went wrong. Please try again.'},400);} }

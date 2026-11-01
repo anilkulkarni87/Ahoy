@@ -211,7 +211,7 @@ Ahoy’s daily Inngest maintenance job attempts to refresh expiring **Instagram 
 7. From an eligible separate Instagram account, leave a **fresh** matching comment. Do not use the sending account to message itself or replay an old webhook as a new test.
 8. Check Vercel for webhook receipt, Inngest for ingestion and delivery runs, Ahoy **Activity** for the outcome, and the recipient’s Instagram inbox or message requests for the actual DM. If a public reply is configured, check it separately.
 
-**You are done when:** a new real comment produces a successful delivery run, a corresponding Activity entry and the expected message and link in Instagram. Then separately test opt-outs, duplicate handling and recovery before relying on the installation broadly. Follow confirmation remains disabled.
+**You are done when:** a new real comment produces a successful delivery run, a corresponding Activity entry and the expected message and link in Instagram. Then separately test opt-outs, duplicate handling and recovery before relying on the installation broadly. Optional [follow-required campaigns](follow-campaigns.md) need their own controlled live test.
 
 Resync after deploying changes to function definitions unless a hosting integration does this successfully for you. Having keys or receiving an Inngest event does not register functions automatically.
 

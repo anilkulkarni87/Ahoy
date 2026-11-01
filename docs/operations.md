@@ -4,7 +4,7 @@ A little comment. A real connection.
 
 A self-hostable Instagram comment-to-DM app, built from the supplied v2 product specification and landing-page design. Includes an editorial landing page, private demo workspaces, a three-step campaign builder, a live message preview, searchable activity, opt-outs, tracked links, admin-token or optional email owner sign-in and guided diagnostics.
 
-**Status:** an owner-controlled Vercel deployment connected a real Instagram account and delivered a campaign DM after a real comment. Keep live sending disabled on a new installation until its checks below pass. This result does not validate all accounts, permissions or recovery paths. Hosted Cloud, follow confirmation, billing, AI matching and lead capture are not enabled.
+**Status:** an owner-controlled Vercel deployment connected a real Instagram account and delivered a campaign DM after a real comment. Keep live sending disabled on a new installation until its checks below pass. This result does not validate all accounts, permissions or recovery paths. Hosted Cloud, billing, AI matching and lead capture are not enabled.
 
 ## Try it in two commands
 
@@ -118,7 +118,7 @@ Unified tokens are not sent to Instagram’s refresh endpoint. Their lifetime de
 
 Use **Check connection** and complete a real comment-to-DM test. Unit tests and setup checks do not prove Meta approval, webhook delivery or real messaging permissions.
 
-The requested behavior is one private reply to a requested comment. No cold messaging, scraping or password-based Instagram login exists. Delayed sends may expire under Meta’s messaging rules. Follow confirmation is intentionally rejected by the API and has no enabling UI; a tap is not assumed to establish a valid messaging window.
+The requested behavior is one private reply to a requested comment. No cold messaging, scraping or password-based Instagram login exists. Delayed sends may expire under Meta’s messaging rules. Campaigns can optionally require a verified follow. The first private reply asks for a CHECK text reply; profile access and subsequent delivery use that inbound messaging window. A tap alone is not treated as consent. See [follow campaigns](follow-campaigns.md) for setup and live acceptance limits.
 
 ## How it works
 
@@ -170,4 +170,4 @@ The code uses the MIT licence. Meta approval is not claimed. The supplied produc
 
 ## Dependency review
 
-The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The latest code checks passed the build and 55 app tests. This documentation-only review did not rerun them. Build and test success do not replace a dependency/security review.
+The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The latest code checks passed the build and 71 app tests. Build and test success do not replace a dependency/security review.

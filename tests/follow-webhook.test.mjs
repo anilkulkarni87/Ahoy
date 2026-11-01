@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+process.env.DATABASE_URL='file::memory:';
+process.env.ENCRYPTION_KEY='e'.repeat(64);
+process.env.META_API_VERSION='v99.0';
+process.env.LIVE_SENDS_ENABLED='true';
+const {db,init}=await import('../lib/db.mjs');
+const {encrypt}=await import('../lib/core.mjs');
+const {processComment,deliver}=await import('../lib/engine.mjs');
+const {dispatchEvent,inngest}=await import('../lib/jobs.mjs');
+const {checkFollow}=await import('../lib/follow.mjs');
+await init();
+await db().execute({sql:'INSERT INTO campaigns VALUES(?,?,?,CURRENT_TIMESTAMP)',args:['c','owner',JSON.stringify({name:'Gated',active:true,accountId:'ig',keywords:['GUIDE'],triggerType:'any',matchMode:'contains',dmTemplate:'RESOURCE',deliveryMode:'after-follow'})]});
+await db().execute({sql:'INSERT INTO accounts(id,tenant,username,token,auth_type) VALUES(?,?,?,?,?)',args:['ig','owner','studio',encrypt('test-token'),'unified']});
+const events=[];inngest.send=async e=>{events.push(e);return {ids:[e.id]};};
+const input=id=>({commentId:id,username:'maya',userId:'actor',text:'GUIDE',accountId:'ig'});
+test('a message webhook enqueues a scoped verification in the existing delivery queue',async()=>{
+ const r=await processComment('owner',input('comment'));
+ global.fetch=async()=>Response.json({recipient_id:'recipient',message_id:'request'});await deliver(r.id);
+ const item={sender:{id:'recipient'},timestamp:Date.now(),message:{text:'CHECK '+r.id.slice(0,8),mid:'msg-1'}};
+ await db().execute("INSERT INTO webhook_events(id,payload) VALUES('webhook','{}')");
+ await dispatchEvent('webhook',{entry:[{id:'ig',messaging:[item]}]});
+ assert.equal(events.length,1);assert.equal(events[0].name,'ahoy/comment.ready');assert.equal(events[0].data.phase,'follow-check');assert.equal(events[0].data.accountId,'ig');assert.equal(events[0].id,'follow:ig:msg-1');assert.equal((await db().execute("SELECT dispatched FROM webhook_events WHERE id='webhook'")).rows[0].dispatched,1);
+ let sends=0;global.fetch=async(url,opts)=>{if(opts.method==='POST')sends++;return Response.json(opts.method==='POST'?{message_id:'resource'}:{is_user_follow_business:true});};await checkFollow(events[0].data);assert.equal(sends,1);
+ await dispatchEvent('webhook',{entry:[{id:'ig',messaging:[item]}]});assert.equal(events.length,1);
+});
+test('STOP and CHECK in the same signed payload cannot release a resource',async()=>{
+ const r=await processComment('owner',input('stop-comment'));global.fetch=async()=>Response.json({recipient_id:'recipient',message_id:'request2'});await deliver(r.id);
+ await dispatchEvent('stop-webhook',{entry:[{id:'ig',messaging:[{sender:{id:'recipient'},timestamp:Date.now(),message:{text:'STOP',mid:'stop'}},{sender:{id:'recipient'},timestamp:Date.now(),message:{text:'CHECK '+r.id.slice(0,8),mid:'check-stop'}}]}]});
+ const event=events.at(-1);assert.equal(event.data.id,r.id);let calls=0;global.fetch=async()=>{calls++;throw Error('should not call');};const outcome=await checkFollow(event.data);assert.equal(outcome.status,'skipped');assert.equal(calls,0);
+ const future=await processComment('owner',input('after-stop'));assert.equal(future.status,'skipped');assert.equal(future.reason,'This person opted out.');
+});

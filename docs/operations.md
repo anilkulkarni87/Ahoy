@@ -130,7 +130,8 @@ The requested behavior is one private reply to a requested comment. No cold mess
 - Unknown network outcomes become failed records requiring owner review. They are not automatically resent: exactly-once delivery cannot be promised across a remote API without provider idempotency support. A crash after claiming can leave `sending`; inspect Instagram before recovering it.
 - Reconciliation recovers undelivered outbox events and queued deliveries, then sweeps recent comments every 15 minutes. **Current sweep is bounded to 25 latest posts and 100 comments per post. Full pagination/checkpointing is a launch gap for high-volume accounts.**
 - Daily maintenance refreshes expiring tokens, summarizes whole UTC days older than 30 days, deletes those records in the same transaction, and clears expired sessions/sign-in tokens. Its tests cover rollup idempotency. The schedule requires an active Inngest connection.
-- Redirects count clicks while ignoring known bots and prefetch headers. This is a heuristic, not perfect human-click attribution.
+- Campaign links are direct by default; click tracking is an explicit per-campaign option. Existing campaign JSON without `trackClicks` uses direct links for newly generated replies. Previously generated messages and tracking links remain unchanged.
+- Optional tracking redirects count clicks while ignoring known bots and prefetch headers. This is a heuristic, not perfect human-click attribution.
 
 ## Diagnostics and checks
 

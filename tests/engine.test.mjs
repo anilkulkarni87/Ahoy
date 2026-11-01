@@ -15,3 +15,19 @@ test('demo seeding returns database ids matching activity references',async()=>{
 test('stable user ids preserve opt-outs across username changes',async()=>{await processComment('alice',{commentId:'id-stop',username:'old-name',userId:'123',text:'STOP',mediaId:'post'},true);const result=await processComment('alice',{commentId:'id-again',username:'new-name',userId:'123',text:'GUIDE',mediaId:'post'},true);assert.equal(result.status,'skipped');assert.equal(result.reason,'This person opted out.');});
 test('daily rollups are idempotent and retain current activity',async()=>{const {rollupAndPurge}=await import('../lib/retention.mjs');await db().execute("INSERT INTO activity(id,tenant,campaign_id,comment_id,username,comment,status,created_at) VALUES('old','retention','c','old-comment','maya','GUIDE','sent','2025-01-01T10:00:00Z')");await rollupAndPurge();await rollupAndPurge();const stats=(await db().execute("SELECT * FROM daily_stats WHERE tenant='retention'")).rows;assert.equal(stats.length,1);assert.equal(Number(stats[0].comments),1);assert.equal(Number(stats[0].sent),1);assert.equal((await db().execute("SELECT * FROM activity WHERE id='old'")).rows.length,0);assert.ok((await db().execute("SELECT * FROM activity WHERE tenant='alice'")).rows.length>0);});
 test('account deletion erases its data without touching other workspaces',async()=>{const {deleteAccountData}=await import('../lib/retention.mjs');await db().execute({sql:'INSERT INTO campaigns(id,tenant,data) VALUES(?,?,?)',args:['delete-me','erase',JSON.stringify({...campaign,accountId:'ig-account'})]});await db().execute("INSERT INTO links(id,tenant,campaign_id,url) VALUES('old-link','erase','delete-me','https://example.com')");await db().execute("INSERT INTO accounts(id,tenant,username,token) VALUES('ig-account','erase','maya','encrypted')");await processComment('erase',{commentId:'erase-comment',username:'sam',text:'GUIDE',mediaId:'post',accountId:'ig-account'},true);await deleteAccountData('erase','ig-account');for(const table of ['campaigns','links','accounts','activity'])assert.equal((await db().execute(`SELECT * FROM ${table} WHERE tenant='erase'`)).rows.length,0);assert.equal((await campaigns('bob')).length,1);});
+test('campaigns send original URLs by default without creating tracking records',async()=>{
+ for(const setting of [undefined,false]) {
+  const tenant=setting===false?'direct-off':'direct-legacy';
+  await db().execute({sql:'INSERT INTO campaigns(id,tenant,data) VALUES(?,?,?)',args:[tenant+'-campaign',tenant,JSON.stringify({...campaign,linkUrl:'https://destination.example/resource?source=instagram',...(setting===undefined?{}:{trackClicks:setting})})]});
+  const r=await processComment(tenant,{commentId:'direct',username:'maya',text:'GUIDE',mediaId:'post'},true);
+  assert.equal(r.message,'Hey maya\nhttps://destination.example/resource?source=instagram');
+  assert.equal((await db().execute({sql:'SELECT count(*) AS n FROM links WHERE tenant=?',args:[tenant]})).rows[0].n,0);
+ }
+});
+test('explicit click tracking creates a redirect mapped to the exact original URL',async()=>{
+ process.env.APP_URL='https://ahoy.example/';
+ await db().execute({sql:'INSERT INTO campaigns(id,tenant,data) VALUES(?,?,?)',args:['tracked-campaign','tracked',JSON.stringify({...campaign,linkUrl:'https://destination.example/resource?source=instagram',trackClicks:true})]});
+ const r=await processComment('tracked',{commentId:'tracked',username:'maya',text:'GUIDE',mediaId:'post'},true);
+ const row=(await db().execute("SELECT * FROM links WHERE tenant='tracked'")).rows[0];
+ assert.equal(row.url,'https://destination.example/resource?source=instagram');assert.equal(r.message,'Hey maya\nhttps://ahoy.example/api/go/'+row.id);
+});

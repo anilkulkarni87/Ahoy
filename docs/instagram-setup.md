@@ -177,6 +177,7 @@ The current app has not yet completed this real-account validation. Follow confi
 | --- | --- |
 | “Professional account required” | Confirm the selected profile is Creator or Business, not merely public. |
 | “Redirect URI mismatch” | Compare the full callback URL, HTTPS scheme, hostname and path character by character. |
+| Empty Instagram account list after selecting an account | The callback includes a safe `diagnostics` summary: account-list shape, portfolio access and the three required permission statuses. Share only the error and this summary. It contains no access token, account IDs, authorization code or state. An unexpected response is reported separately from a genuinely empty list. |
 | Invalid platform app | Check the dashboard setup type. Unified Login needs META_LOGIN_MODE=unified, META_CONFIG_ID and the Meta app credentials. Redeploy; the Connect button should open Facebook’s dialog with config_id. |
 | Webhook verification fails | Check APP_URL, the deployed `/api/webhook` address and the exact same META_VERIFY_TOKEN on both sides. |
 | A tester cannot connect | Confirm the right app/account role, accepted invitation, selected account and consent. |

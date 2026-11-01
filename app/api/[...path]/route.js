@@ -80,7 +80,7 @@ export async function GET(req,context) { try {
   return json(await meta(`${account.id}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink&limit=25`,decrypt(account.token),{},account.auth_type));
  }
  return json({error:'This page could not be found.'},404);
- } catch(e){console.error('Ahoy request failed:',e.name);return json({error:e.message||'Something went wrong. Please try again.'},400);} }
+ } catch(e){console.error('Ahoy request failed:',e.name);if(e.connectionDiagnostics)console.error('Ahoy Instagram connection checks:',e.connectionDiagnostics);return json({error:e.message||'Something went wrong. Please try again.',...(e.connectionDiagnostics?{diagnostics:e.connectionDiagnostics}:{})},400);} }
 export async function POST(req,context) {try {
  await init(); const {path}=await context.params;const route=path.join('/');
  if(route==='webhook') {

@@ -29,7 +29,7 @@ test('Unified exchange discovers every assigned account, subscribes, and preserv
  assert.deepEqual(accounts.map(a=>a.id),['111','222']);assert.ok(accounts.every(a=>a.authType==='unified'&&a.expiresAt===null));assert.ok(calls.every(c=>c.url.host==='graph.facebook.com'));assert.equal(calls.filter(c=>c.url.pathname.endsWith('/subscribed_apps')).length,2);assert.equal(calls[0].url.searchParams.get('redirect_uri'),'https://ahoy.example/api/instagram/callback');
 });
 test('empty assignment and failed exchange do not create an apparent connection or expose secrets',async()=>{
- await assert.rejects(()=>exchangeConnection('code',env,async url=>response(String(url).includes('/oauth/access_token')?{access_token:'token'}:{data:[]})),/No Instagram account/);
+ await assert.rejects(()=>exchangeConnection('code',env,async url=>response(String(url).includes('/oauth/access_token')?{access_token:'token'}:{data:[]})),/empty Instagram account list/);
  await assert.rejects(()=>exchangeConnection('code',env,async()=>new Response(JSON.stringify({error:{message:'secret-provider-payload'}}),{status:400})),e=>!e.message.includes('secret-provider-payload')&&/exchange/.test(e.message));
 });
 test('graph host follows each stored account mode rather than current setup',async()=>{
@@ -48,4 +48,27 @@ test('Instagram Login retains its long-lived exchange and explicit profile looku
 test('a refused webhook subscription fails the connection instead of claiming success',async()=>{
  const fetchImpl=async url=>{url=new URL(url);if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'token',expires_in:3600});if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[{id:'111'}]});if(url.pathname.endsWith('/subscribed_apps'))return response({success:false});return response({id:'111',username:'studio'});};
  await assert.rejects(()=>exchangeConnection('code',env,fetchImpl),/webhook subscriptions/);
+});
+
+test('empty discovery reports safe portfolio and permission checks instead of blaming account selection',async()=>{
+ const fetchImpl=async url=>{url=new URL(url);
+  if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'private-issued-token'});
+  if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[]});
+  if(url.pathname.endsWith('/permissions'))return response({data:[{permission:'instagram_basic',status:'granted'},{permission:'instagram_manage_comments',status:'declined'},{permission:'private-other-scope',status:'provider-private-data'}]});
+  return response({id:'private-user-id',client_business_id:'private-business-id'});
+ };
+ await assert.rejects(()=>exchangeConnection('private-code',env,fetchImpl),e=>{
+  assert.equal(e.connectionDiagnostics.responseShape,'empty-list');assert.equal(e.connectionDiagnostics.accountCount,0);assert.equal(e.connectionDiagnostics.portfolioAccess,'confirmed');
+  assert.deepEqual(e.connectionDiagnostics.permissions,{instagram_basic:'granted',instagram_manage_comments:'declined',instagram_manage_messages:'not-returned'});
+  const safe=JSON.stringify(e.connectionDiagnostics);for(const privateValue of ['private-issued-token','private-code','private-user-id','private-business-id',env.META_APP_SECRET,'private-other-scope','provider-private-data'])assert.equal(safe.includes(privateValue),false);
+  return true;
+ });
+});
+test('missing data is reported as an unexpected response rather than an empty assignment',async()=>{
+ const fetchImpl=async url=>response(String(url).includes('/oauth/access_token')?{access_token:'private-token'}:{unrecognized:'private-provider-payload'});
+ await assert.rejects(()=>exchangeConnection('code',env,fetchImpl),e=>e.connectionDiagnostics.responseShape==='unexpected'&&e.connectionDiagnostics.accountCount===null&&!JSON.stringify(e.connectionDiagnostics).includes('private-provider-payload'));
+});
+test('failed diagnostic probes preserve the discovery error and disclose only numeric error codes',async()=>{
+ const fetchImpl=async url=>{url=new URL(url);if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'private-token'});if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[]});return new Response(JSON.stringify({error:{code:100,message:'private-provider-payload'}}),{status:400});};
+ await assert.rejects(()=>exchangeConnection('code',env,fetchImpl),e=>e.connectionDiagnostics.portfolioCheckCode===100&&e.connectionDiagnostics.permissionCheckCode===100&&!JSON.stringify(e.connectionDiagnostics).includes('private-provider-payload'));
 });

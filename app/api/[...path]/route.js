@@ -82,14 +82,17 @@ export async function GET(req,context) { try {
  return json({error:'This page could not be found.'},404);
  } catch(e){console.error('Ahoy request failed:',e.name);if(e.connectionDiagnostics)console.error('Ahoy Instagram connection checks:',e.connectionDiagnostics);return json({error:e.message||'Something went wrong. Please try again.',...(e.connectionDiagnostics?{diagnostics:e.connectionDiagnostics}:{})},400);} }
 export async function POST(req,context) {try {
- await init(); const {path}=await context.params;const route=path.join('/');
+ const {path}=await context.params;const route=path.join('/');
+ if(route==='webhook')console.info('Ahoy webhook received',{signaturePresent:req.headers.has('x-hub-signature-256')});
+ await init();
  if(route==='webhook') {
   const raw=await req.text();if(raw.length>1000000) return json({error:'Event too large.'},413);
-  if(!signatureValid(raw,req.headers.get('x-hub-signature-256'),process.env.META_APP_SECRET)) return json({error:'Signature rejected.'},403);
+  if(!signatureValid(raw,req.headers.get('x-hub-signature-256'),process.env.META_APP_SECRET)) {console.warn('Ahoy webhook rejected: signature check failed.');return json({error:'Signature rejected.'},403);}
   const id=createHash('sha256').update(raw).digest('hex');const payload=JSON.parse(raw);
   await db().execute({sql:'INSERT OR IGNORE INTO webhook_events(id,payload) VALUES(?,?)',args:[id,raw]});
+  console.info('Ahoy webhook saved',{entryCount:Array.isArray(payload.entry)?payload.entry.length:0});
   // Persist before acknowledging; reconciliation recovers dispatch failures.
-  try {await inngest.send({id:'webhook:'+id,name:'ahoy/webhook.received',data:{id}});} catch {console.error('Webhook saved; dispatch will be recovered by reconciliation.');}
+  try {await inngest.send({id:'webhook:'+id,name:'ahoy/webhook.received',data:{id}});console.info('Ahoy webhook handed to Inngest');} catch {console.error('Ahoy webhook saved but Inngest dispatch failed; reconciliation must recover it.');}
   return json({received:true});
  }
  if(route==='data-deletion') {

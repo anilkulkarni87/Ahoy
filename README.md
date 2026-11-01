@@ -6,7 +6,7 @@
 
 An MIT-licensed, self-hostable Instagram comment-to-DM app. Start with the demo, then connect your own Instagram account when you’re ready.
 
-> **No Facebook Business account? You can still test the whole demo.** Create campaigns, preview messages, simulate comments and inspect activity without Meta, Instagram, Resend or Inngest credentials. Real Instagram delivery is a separate setup and has not yet been validated end to end.
+> **No Facebook Business account? You can still test the whole demo.** Create campaigns, preview messages, simulate comments and inspect activity without Meta, Instagram, Resend or Inngest credentials. Real Instagram delivery requires the separate setup below.
 
 ## Start here
 
@@ -63,6 +63,16 @@ Read [the step-by-step Instagram guide](docs/instagram-setup.md) before setting 
 
 For private owner sign-in, set a generated `ADMIN_TOKEN` in your hosting environment and enter it on the sign-in page. Resend email links remain optional. For durable data and background delivery on Vercel, configure Turso and Inngest. Keep live sends off until your controlled live test is ready. Hosted Cloud and follow confirmation are unavailable.
 
+## What made the first real connection work?
+
+The working installation used **Unified Login**, the matching Meta app credentials and exact configuration ID. Meta issued a token with the required permissions, but `/me/assigned_instagram_accounts` returned an empty list even after the owner selected an account. A direct request for that Instagram profile succeeded.
+
+The decisive workaround was `META_INSTAGRAM_ACCOUNT_ID`: Ahoy uses this optional ID only when discovery is empty, verifies the profile with the new OAuth token and requires webhook subscription before saving. No manually generated access token is stored in an environment variable. See [the connection diagnosis and fallback](docs/instagram-setup.md#if-meta-returns-an-empty-account-list-after-you-selected-your-account).
+
+Connection and delivery are separate checkpoints. Configure Meta’s `/api/webhook` callback, then sync `/api/inngest` and confirm all four functions are registered. A received webhook or an event in Inngest alone does not prove a delivery function ran. Follow [the live-test checklist](docs/instagram-setup.md#8-register-background-functions-and-test-a-real-comment).
+
+Campaign links are sent directly by default. Enable **Track link clicks** to send an Ahoy redirect and count clicks. Already-sent messages and their tracking links remain unchanged.
+
 ## Private owner sign-in without Resend
 
 Generate a separate secret on your computer:
@@ -82,16 +92,10 @@ npm run build
 npm run doctor
 ```
 
-The app has been tested locally, including serverless-storage configuration, matching, opt-outs, encryption, duplicate protection and retry behavior. A real Vercel/Turso/Inngest/Meta account flow still needs external validation. The [reference](docs/operations.md#remaining-launch-work) lists launch gaps, including outstanding dependency advisories. Docker files are provided but have not been exercised here.
+The app has been tested locally, including serverless-storage configuration, matching, opt-outs, encryption, duplicate protection and retry behavior. An owner-controlled Vercel deployment has connected a real Instagram account and delivered a campaign DM after a real comment. This is one successful deployment, not certification of every account, permission or recovery path. The [reference](docs/operations.md#remaining-launch-work) lists launch gaps, including outstanding dependency advisories. Docker files are provided but have not been exercised here.
 
 ## Contributing and licence
 
 [MIT](LICENSE). Fork, modify and self-host it. See [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md).
 
 Your `.env.local`, tokens, database, build output and deployment metadata are excluded from Git. Never add them manually. The supplied product specification and PDF are design references; they are not evidence of Meta approval or completed production testing.
-
-New Meta apps use **Unified Login**. Set `META_LOGIN_MODE=unified` and the numeric `META_CONFIG_ID`, then use the Meta app ID/secret from App settings → Basic. See the [step-by-step Instagram setup guide](docs/instagram-setup.md). Existing Instagram Login connections remain supported.
-
-If Unified Login returns an empty account list while direct account access works, set optional `META_INSTAGRAM_ACCOUNT_ID` to your own Instagram account ID and redeploy. Ahoy verifies the account with the OAuth token and requires webhook subscription before saving. See [Instagram setup](docs/instagram-setup.md).
-
-Campaign links are sent directly by default. Enable **Track link clicks** in the campaign builder to send an Ahoy redirect link and count clicks. The preview shows which form will be sent. Existing campaigns without an explicit tracking setting also use direct links for newly generated replies; already-sent messages and their tracking links remain unchanged.

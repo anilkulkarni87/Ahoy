@@ -26,7 +26,7 @@ On the project’s GitHub page, click **Fork → Create fork**. Choose your own 
 
 ## 3. Take a little look
 
-Open the deployment address. If Vercel shows its own deployment-protection login, sign in with the Vercel account that owns this project first. Then choose **Take a little look** in Ahoy. Do not use Ahoy’s **Sign in** button yet; email sign-in is a separate optional setup for real use.
+Open the deployment address. If Vercel shows its own deployment-protection login, sign in with the Vercel account that owns this project first. Then choose **Take a little look** in Ahoy. Do not use Ahoy’s **Sign in** button yet; owner sign-in needs a separately configured ADMIN_TOKEN or optional Resend email setup.
 
 **Checkpoint:** you see the sample workspace, sample campaigns and a demo banner. The banner explains that temporary demo data may reset.
 
@@ -63,7 +63,7 @@ Keep the token private. You still need no Meta, Resend or Inngest settings for a
 | --- | --- |
 | Saved demo campaigns | Turso database URL and token |
 | A private owner dashboard | A generated ADMIN_TOKEN; Resend email links are optional |
-| A real Instagram connection | An eligible Creator/Business profile and your Meta app’s Instagram Login setup |
+| A real Instagram connection | An eligible Creator/Business profile and your Meta app’s Unified Login setup (or existing Instagram Login) |
 | Background delivery, retries and maintenance | Inngest, synced with your deployment |
 | Real message sending | Complete the controlled live test, then explicitly enable live sends |
 
@@ -83,4 +83,4 @@ Follow the [Instagram setup guide](instagram-setup.md) and [hosting reference](o
 
 Use the issue templates to report problems. Include the screen and error, but never tokens, `.env.local`, database contents or customer messages.
 
-Sources: [Vercel’s Git import flow](https://vercel.com/docs/git), [environment variables](https://vercel.com/docs/environment-variables), and [Next.js deployment support](https://nextjs.org/docs/app/getting-started/deploying). These instructions are prepared for users to test; an actual deployment has not yet been exercised in this workspace.
+Sources: [Vercel’s Git import flow](https://vercel.com/docs/git), [environment variables](https://vercel.com/docs/environment-variables), and [Next.js deployment support](https://nextjs.org/docs/app/getting-started/deploying). An owner-controlled Vercel deployment has subsequently connected Instagram and delivered a real campaign DM. That required the separate real-service setup; the no-credentials demo only simulates delivery.

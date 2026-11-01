@@ -9,6 +9,8 @@ The setup has two separate parts:
 
 You should not have to paste an Instagram access token into an Ahoy form, generate a token every day, or share your Instagram password with the person helping you.
 
+**Working deployment, November 1, 2026:** an owner connected their professional account and received a real campaign DM. The connection needed Unified Login plus the [optional account-ID fallback](#if-meta-returns-an-empty-account-list-after-you-selected-your-account), because Meta returned an empty assigned-account list despite allowing direct profile access. Webhook delivery and Inngest function registration were separate checkpoints. This result does not establish approval for unrelated customer accounts or validate every recovery path.
+
 ## 1. Business, Creator or Personal?
 
 “Professional account” is Instagram’s umbrella term for **Business** and **Creator**. It does not mean you need a paid verification badge. A Meta developer app and Meta business verification are separate things again.
@@ -78,9 +80,10 @@ Start with your own eligible account and a controlled test. If you intend to con
 
 Before configuring Meta, deploy Ahoy with a public HTTPS address. For example, if your address is `https://my-ahoy.example`, the values below are:
 
-| What Meta asks for | What to enter |
+| Setting | What to enter |
 | --- | --- |
 | OAuth redirect URI | `https://my-ahoy.example/api/instagram/callback` |
+| Inngest app sync URL (enter in Inngest, not Meta) | `https://my-ahoy.example/api/inngest` |
 | Webhook callback URL | `https://my-ahoy.example/api/webhook` |
 | Privacy policy URL | `https://my-ahoy.example/?view=privacy` |
 | Data-deletion instructions URL | `https://my-ahoy.example/?view=deletion` |
@@ -100,7 +103,7 @@ First check the heading in your Meta dashboard. **New apps use Unified Login.** 
 2. Connect the app to a business portfolio if prompted. A **business portfolio** is Meta’s container for assets and access; it is separate from choosing Business versus Creator on Instagram. Both professional account types can connect. A Facebook Page is not required for Unified Login.
 3. Select **Create new configuration**, or select an **Instagram Login Compatible** configuration. Use a **Business Integration System User Access Token** configuration. Select **Use this configuration**.
 4. Review its permissions. Ahoy needs `instagram_basic`, `instagram_manage_comments` and `instagram_manage_messages`. Remove publishing and advertising permissions if your configuration permits and you do not need them. Check the configuration preview for token expiry.
-5. Save your exact HTTPS **Redirect URL**: `https://YOUR_DOMAIN/api/instagram/callback`. Copy the numeric **Configuration ID** (`config_id` in the generated Login URL).
+5. Save your exact HTTPS **Redirect URL**: `https://YOUR_DOMAIN/api/instagram/callback`. Copy the complete numeric **Configuration ID** (`config_id` in the generated Login URL). Check every digit; this is different from the app ID.
 6. In **Vercel → Project → Settings → Environment Variables**, set:
 
    ```text
@@ -114,20 +117,31 @@ First check the heading in your Meta dashboard. **New apps use Unified Login.** 
 
    Get the matching **Meta App ID and App Secret from App settings → Basic**. Paste values without quotation marks or surrounding spaces. APP_URL is the site address, without `/api/...` or a trailing slash. Secrets belong only in private environment settings.
 7. Under **Add account**, invite your professional Instagram account as an Instagram Tester. Accept the invitation on Instagram’s website under **Settings → Website permissions → Apps and websites → Tester Invites**.
-8. Configure **Webhooks → Instagram object** on the Meta app. Use your `/api/webhook` URL and the same `META_VERIFY_TOKEN` in both places. Enable `comments` and `messages`. Ahoy also subscribes each shared account during connection.
+8. Open **Configure webhooks** in Unified Login setup (or **Webhooks → Instagram object**, depending on the dashboard). Use your `/api/webhook` URL and the same `META_VERIFY_TOKEN` in both places. Enable `comments` and `messages`. Ahoy also subscribes each shared account during connection.
 9. Redeploy after saving environment variables. Sign in to Ahoy as owner and select **Connect account**. Meta opens its Unified Login screen. Log in with Instagram or Facebook, choose the business portfolio and Instagram accounts to share, and allow message access. Ahoy exchanges the code, discovers the selected accounts and encrypts the token. Do not paste a token into chat or an Ahoy form.
 
-Standard Access is for testing with appropriate app roles. Serving other clients requires the access level, App Review and Live mode described by Meta. Configuration alone is not approval.
+Standard Access supports eligible testing with the appropriate app roles; permissions and webhook access also have their own requirements. Serving unrelated clients requires Meta’s applicable access level and App Review. Publishing the app is not proof that every permission has Advanced Access. We did not establish that completing App Review fixed this installation: the observed connection blocker was account discovery. Meta’s webhook setup documentation specifically lists Advanced Access for `comments` and `live_comments` notifications. The working installation’s approval level was not independently verified; check the requirements for your fields and use case.
+
+Always start authorization from Ahoy’s **Connect account** button in the same browser. Opening Meta’s generated Login URL manually can return to Ahoy without a matching connection session and show “This connection expired.” Do not reuse callback URLs or authorization codes.
 
 ### If Meta returns an empty account list after you selected your account
 
-Sometimes `/me/assigned_instagram_accounts` returns `data: []` even though a direct request to the Instagram account succeeds. For a self-hosted installation using your own account, set the optional private hosting variable:
+In the working deployment, the diagnostic checks showed:
+
+| Check | Observed result | What it established |
+| --- | --- | --- |
+| `/me?fields=id,client_business_id` | HTTP 200, portfolio present | The system token represented a portfolio integration. Its `/me` ID was not the Instagram profile ID. |
+| `/me/permissions` | Required Instagram permissions granted | Permission names alone did not prove account discovery worked. |
+| `/me/assigned_instagram_accounts?fields=id,username` | HTTP 200, `data: []` | Automatic discovery found no accounts despite the selection screen. |
+| `/{INSTAGRAM_ACCOUNT_ID}?fields=id,username` | HTTP 200, expected profile | That token could access the intended profile directly. |
+
+A separately generated system token helped isolate this discrepancy outside Ahoy; it was not installed as Ahoy’s connection token. The underlying reason Meta returned an empty list was not established. For a self-hosted installation using your own account, set the optional private hosting variable:
 
 ```text
 META_INSTAGRAM_ACCOUNT_ID=YOUR_NUMERIC_INSTAGRAM_ACCOUNT_ID
 ```
 
-Get this ID from Meta Business Settings → Accounts → Instagram accounts. It is not the business portfolio ID, app ID, system-user ID or username. Save and redeploy, then start a fresh **Connect account** attempt.
+Get this ID from Meta Business Settings → Accounts → Instagram accounts. Confirm it identifies the intended profile, rather than copying an ID from a token identity response. It is not the business portfolio ID, app ID, system-user ID or username. Save and redeploy, then start a fresh **Connect account** attempt.
 
 Ahoy still completes OAuth. If discovery is genuinely empty, it requests this specific account with the newly issued token, verifies the returned ID and profile, and requires a successful `comments,messages` webhook subscription before saving. A token that cannot access or subscribe the account is rejected. An unexpected account-list format remains an error. No manually generated access token is needed or stored through environment settings.
 
@@ -176,15 +190,30 @@ The Resend API key and Turso database token are credentials for those providers.
 
 **You are done when:** your account appears in the private workspace and Check connection succeeds. This validates account access, not permission to message every possible recipient.
 
-Ahoy’s daily Inngest maintenance job attempts to refresh expiring tokens. That job must be configured and running. If a token has expired, consent was revoked or refresh fails, reconnect from Accounts. The app uses the expiry returned by Meta rather than promising that a token is permanent.
+Ahoy’s daily Inngest maintenance job attempts to refresh expiring **Instagram Login** tokens. Unified Login tokens use the lifetime selected in Meta’s configuration; automatic rotation of those tokens is not implemented. If a token has expired, consent was revoked or refresh fails, reconnect from Accounts. The app uses the expiry returned by Meta rather than promising that a token is permanent.
 
-## 8. Test before turning it loose
+## 8. Register background functions and test a real comment
 
-Create one campaign for one post, use a clear keyword and a short message, and follow the controlled live-test procedure in the README. Leave a matching comment from an eligible separate test account; do not use the sending account to DM itself.
+1. Configure durable Turso storage and both Inngest keys in Vercel Production. Use event and signing keys from the same intended Inngest environment. Redeploy after changing variables.
+2. In that Inngest environment, open **Apps → Sync new app** (or open the existing app → **Resync**). Enter `https://YOUR_DOMAIN/api/inngest`. Use your stable deployment domain.
+3. Confirm the sync succeeds and these four functions appear:
 
-Check the real Instagram inbox and Ahoy Activity. Validate opt-outs and duplicate-event handling. Keep LIVE_SENDS_ENABLED=false until your app configuration and policy checks are ready; enable it explicitly for the controlled live test.
+   | Function ID | Trigger |
+   | --- | --- |
+   | `ingest-webhook` | `ahoy/webhook.received` |
+   | `deliver-comment` | `ahoy/comment.ready` |
+   | `reconcile` | Every 15 minutes |
+   | `daily-maintenance` | Daily |
 
-The current app has not yet completed this real-account validation. Follow confirmation remains disabled, and Meta approval is not claimed.
+4. Confirm Meta accepts the `/api/webhook` callback and has `comments` and `messages` enabled. Connecting an account also subscribes that account; both settings are needed. A Meta **Test** event may contain dummy account data, so it is only a transport check.
+5. Create and activate one campaign for one real post, with a clear keyword and a short message. Keep **Track link clicks** off to send your destination URL directly. If enabled, an Ahoy `/api/go/...` redirect is intentional and should open your destination.
+6. Keep `LIVE_SENDS_ENABLED=false` during setup. When ready for the controlled test, set it to `true` in Production and redeploy. Keep `SAAS_ENABLED=false`; `DEMO_MODE=false` makes the installation owner-only.
+7. From an eligible separate Instagram account, leave a **fresh** matching comment. Do not use the sending account to message itself or replay an old webhook as a new test.
+8. Check Vercel for webhook receipt, Inngest for ingestion and delivery runs, Ahoy **Activity** for the outcome, and the recipient’s Instagram inbox or message requests for the actual DM. If a public reply is configured, check it separately.
+
+**You are done when:** a new real comment produces a successful delivery run, a corresponding Activity entry and the expected message and link in Instagram. Then separately test opt-outs, duplicate handling and recovery before relying on the installation broadly. Follow confirmation remains disabled.
+
+Resync after deploying changes to function definitions unless a hosting integration does this successfully for you. Having keys or receiving an Inngest event does not register functions automatically.
 
 ## Common snags
 
@@ -198,18 +227,22 @@ The current app has not yet completed this real-account validation. Follow confi
 | Webhook verification fails | Check APP_URL, the deployed `/api/webhook` address and the exact same META_VERIFY_TOKEN on both sides. |
 | A tester cannot connect | Confirm the right app/account role, accepted invitation, selected account and consent. |
 | Token works but messages fail | Check messaging/comment permissions, recipient eligibility, comment age and Meta’s error. A valid token alone is insufficient. |
-| Comments arrive but stay queued | Confirm Inngest keys, signing key and the deployed `/api/inngest` sync. |
+| Inngest receives the event but no function runs | Sync/resync the app in the same environment as the keys. Check that `ingest-webhook` has the exact `ahoy/webhook.received` trigger and all four functions appear. |
+| Comments arrive but stay queued | Inspect the ingestion and delivery run results, campaign status, matching keyword and `LIVE_SENDS_ENABLED`. |
+| `GET /api/inngest`: “No x-inngest-signature provided” | An unsigned browser/probe request can produce this rejection. Inspect actual signed sync/run results; this GET alone does not prove jobs failed. Keep signature verification enabled. |
+| The DM shows an Ahoy `/api/go/...` URL | Click tracking sends a redirect intentionally. Check its destination; turn off **Track link clicks** for direct URLs in newly generated messages. |
 | Admin token is rejected | Copy the exact ADMIN_TOKEN value, without quotes or spaces; redeploy after changing it. Wait fifteen minutes if attempts are limited. |
 | Owner email never arrives | Check OWNER_EMAIL, Resend’s verified sending domain, EMAIL_FROM, provider logs and spam. Instagram settings will not fix email sign-in. |
 | It worked before, then stopped | Check account connection/token expiry, Inngest maintenance and whether access was revoked. |
 
 ## Sources and verification limits
 
-- [Meta’s Instagram API collection: Instagram Login, professional accounts, permissions and tester requirements](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
-- [Meta’s Instagram Login setup documentation](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/).
+- [Meta: Unified Login get started](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/get-started).
+- [Meta: migration from Instagram Login](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/migration-guide).
+- [Meta: webhook setup](https://developers.facebook.com/documentation/instagram-platform/webhooks/setup).
+- [Meta: App Review](https://developers.facebook.com/documentation/instagram-platform/app-review).
+- [Inngest: apps, syncs and environments](https://www.inngest.com/docs/platform-and-operations/apps-and-syncs).
 - [Instagram Help: professional accounts](https://help.instagram.com/138925576505882).
 - [Resend: domains and verification](https://resend.com/docs/dashboard/domains/introduction).
 
-Documentation reviewed October 31, 2026. The Meta-owned Postman collection was accessible; Meta’s developer/help pages were rate-limited or login-gated. Exact current dashboard/mobile screenshots and a real-account walkthrough still need validation. No guessed screenshots, guaranteed setup times or approval guarantees are supplied here.
-
-Unified Login reference: [Meta’s migration guide](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/migration-guide) and [Facebook Login for Business](https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business). Verified against Meta’s published text through a text reader on 31 October 2026. Live connection and delivery still require an owner-controlled Meta test.
+Updated November 1, 2026 using the current implementation and the owner’s observed production connection and campaign DM. Meta’s published setup text was checked through a text reader where direct developer pages were inaccessible. Exact mobile menu labels, access for unrelated accounts, automatic recovery, token expiry/revocation and deletion still need validation for each installation. One successful account does not establish general Meta approval.

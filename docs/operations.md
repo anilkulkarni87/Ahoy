@@ -2,9 +2,9 @@
 
 A little comment. A real connection.
 
-A self-hostable Instagram comment-to-DM app, built from the supplied v2 product specification and landing-page design. Includes an editorial landing page, private demo workspaces, a three-step campaign builder, a live message preview, searchable activity, opt-outs, tracked links, email owner sign-in and guided diagnostics.
+A self-hostable Instagram comment-to-DM app, built from the supplied v2 product specification and landing-page design. Includes an editorial landing page, private demo workspaces, a three-step campaign builder, a live message preview, searchable activity, opt-outs, tracked links, admin-token or optional email owner sign-in and guided diagnostics.
 
-**Status:** working local demo and integration implementation. This has not yet been validated against a real Meta account or deployed services. Keep live sending disabled until the checks below pass. Hosted Cloud, follow confirmation, billing, AI matching and lead capture are not enabled.
+**Status:** an owner-controlled Vercel deployment connected a real Instagram account and delivered a campaign DM after a real comment. Keep live sending disabled on a new installation until its checks below pass. This result does not validate all accounts, permissions or recovery paths. Hosted Cloud, follow confirmation, billing, AI matching and lead capture are not enabled.
 
 ## Try it in two commands
 
@@ -76,6 +76,7 @@ Copy `.env.example` to `.env.local` locally. On a hosting provider, use its envi
 | META_APP_ID | Unified Login: Meta app ID from App settings → Basic. Instagram Login: product application ID. |
 | META_LOGIN_MODE | `unified` for new Meta apps; `instagram` for existing Instagram Login apps. |
 | META_CONFIG_ID | Numeric Unified Login configuration ID; required in unified mode. |
+| META_INSTAGRAM_ACCOUNT_ID | Optional own-account fallback when Unified discovery is empty; Ahoy still verifies profile access and webhook subscription. |
 | META_APP_SECRET | App secret used for OAuth exchanges and webhook signatures. |
 | META_VERIFY_TOKEN | A random string you choose; enter the identical value in Meta’s webhook settings. |
 | META_API_VERSION | A currently supported Graph API version from your app dashboard. Deliberately not hard-coded to an unverified version. |
@@ -129,7 +130,7 @@ The requested behavior is one private reply to a requested comment. No cold mess
 - Inngest serializes send steps per Instagram account and throttles new runs rather than dropping overflow. Meta rate-limit responses are retryable. A conditional database claim prevents overlapping workers from sending the same record.
 - Unknown network outcomes become failed records requiring owner review. They are not automatically resent: exactly-once delivery cannot be promised across a remote API without provider idempotency support. A crash after claiming can leave `sending`; inspect Instagram before recovering it.
 - Reconciliation recovers undelivered outbox events and queued deliveries, then sweeps recent comments every 15 minutes. **Current sweep is bounded to 25 latest posts and 100 comments per post. Full pagination/checkpointing is a launch gap for high-volume accounts.**
-- Daily maintenance refreshes expiring tokens, summarizes whole UTC days older than 30 days, deletes those records in the same transaction, and clears expired sessions/sign-in tokens. Its tests cover rollup idempotency. The schedule requires an active Inngest connection.
+- Daily maintenance refreshes expiring Instagram Login tokens, summarizes whole UTC days older than 30 days, deletes those records in the same transaction, and clears expired sessions/sign-in tokens. Its tests cover rollup idempotency. The schedule requires an active Inngest connection.
 - Campaign links are direct by default; click tracking is an explicit per-campaign option. Existing campaign JSON without `trackClicks` uses direct links for newly generated replies. Previously generated messages and tracking links remain unchanged.
 - Optional tracking redirects count clicks while ignoring known bots and prefetch headers. This is a heuristic, not perfect human-click attribution.
 
@@ -157,8 +158,8 @@ The UI’s green configuration checks do not certify Meta permissions, public we
 
 This repository is useful and runnable now, but is not a claim that every v1 launch requirement is complete:
 
-- Validate OAuth, scopes, account roles, real private replies, public replies, token refresh, reconciliation, retries and deletion against your actual Meta app.
-- Validate hosted Turso and Inngest configuration, scheduling and quotas.
+- Repeat OAuth and private-reply validation for each installation. The first real account connection and campaign DM have been observed; public replies, token expiry/revocation, reconciliation, retries and deletion still require dedicated live acceptance checks.
+- Verify Inngest function registration in the correct environment; test scheduled jobs, recovery and provider quotas beyond the observed comment-to-DM flow.
 - Add full pagination/checkpointing for reconciliation; validate incoming-message opt-outs and complete raw-webhook subject-data erasure.
 - Finish Meta setup screenshots, a review screencast and the public demo video.
 - MIT has been chosen for the code. Finalise contribution terms and the product name.
@@ -169,4 +170,4 @@ The code uses the MIT licence. Meta approval is not claimed. The supplied produc
 
 ## Dependency review
 
-The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The build and all 25 app tests pass, but neither is a substitute for a dependency/security review.
+The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The latest code checks passed the build and 55 app tests. This documentation-only review did not rerun them. Build and test success do not replace a dependency/security review.

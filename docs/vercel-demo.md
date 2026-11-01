@@ -62,7 +62,7 @@ Keep the token private. You still need no Meta, Resend or Inngest settings for a
 | You want… | Add… |
 | --- | --- |
 | Saved demo campaigns | Turso database URL and token |
-| A private owner dashboard | Owner email, Resend sending domain and email configuration |
+| A private owner dashboard | A generated ADMIN_TOKEN; Resend email links are optional |
 | A real Instagram connection | An eligible Creator/Business profile and your Meta app’s Instagram Login setup |
 | Background delivery, retries and maintenance | Inngest, synced with your deployment |
 | Real message sending | Complete the controlled live test, then explicitly enable live sends |
@@ -76,7 +76,7 @@ Follow the [Instagram setup guide](instagram-setup.md) and [hosting reference](o
 | Vercel cannot find the fork | Grant Vercel access to the correct GitHub repository. |
 | Build fails | Read the first error in Vercel’s build log. Confirm Next.js, root `./`, Node 22 and the tracked lockfile. |
 | App asks for Instagram credentials | Return to **Take a little look**. Connecting an account is optional for the demo. |
-| Ahoy sign-in says email is not configured | Use **Take a little look**. Resend is only needed for owner sign-in. |
+| Ahoy sign-in says email is not configured | Use **Take a little look**. For owner access, configure ADMIN_TOKEN; Resend email links are optional. |
 | Campaign vanished or the sample data returned | This can happen in the temporary demo. Add Turso for saved data. |
 | Error says to connect Turso | Remove accidental real-mode settings for the demo, or configure a real `libsql://` database and redeploy. |
 | An old deployment ignores a new variable | Redeploy after updating Vercel’s environment settings. |

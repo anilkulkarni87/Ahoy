@@ -37,30 +37,34 @@ In the Instagram mobile app:
 
 Menu wording and placement can vary by Instagram version and account. Treat the steps above as navigation guidance and follow the labels shown in your app. Meta’s help pages were login-gated/rate-limited during the documentation check; these exact screens have not been verified on a current mobile account.
 
-## 2. Why does Ahoy mention Resend?
+## 2. Sign in with your admin token (no email service needed)
 
-There are **two different sign-ins**:
+Ahoy sign-in protects your owner dashboard. **Connect Instagram** is a separate Meta authorization step. Your ADMIN_TOKEN is not a Meta app secret, Instagram access token, database token or webhook verify token.
 
-| Sign-in | What it does | Who handles it |
-| --- | --- | --- |
-| Sign in to Ahoy | Opens your private owner dashboard using a link in your email. | Ahoy creates a one-use link; **Resend delivers the email**. |
-| Connect Instagram | Authorizes Ahoy to access your professional account with the approved permissions. | **Instagram / Meta**, through its official login screen. |
+1. Generate a separate private admin secret on your computer:
 
-The product spec asks for email magic-link sign-in, so the current implementation uses Resend. Resend does not send your Instagram DMs and does not create Meta tokens. The demo does not need it.
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
 
-**For real owner sign-in, Resend is currently required by this code.** Another email provider or SMTP is not a drop-in environment-variable change. Password or passkey sign-in could remove the email-provider setup, but neither is implemented in this version. Keep owner authentication enabled on a public installation.
+2. Copy the generated value into **Vercel → Project → Settings → Environment Variables → ADMIN_TOKEN**. For local use, put it in `.env.local`. Paste only the value, without quotes. Keep a safe private copy.
+3. Set APP_URL to your public HTTPS site address. For local use, `http://localhost:3000` is allowed. On Vercel, configure Turso for durable owner data and sessions; set `DEMO_MODE=false` if you want only the private owner workspace.
+4. Redeploy on Vercel, or restart locally. Open **Sign in**, enter your admin token and select **Sign in**. No OWNER_EMAIL, RESEND_API_KEY or EMAIL_FROM is needed.
+5. You should see your private owner dashboard rather than the sample demo workspace. The browser receives a seven-day HttpOnly session cookie. Ahoy stores a hash of the session, not the raw admin token. Sign out to remove that session.
 
-To configure the current email sign-in:
+Use a generated secret of 32–256 letters, digits, underscores or hyphens. The command above generates 64 hexadecimal characters. Never put it in a public repository, URL or a `NEXT_PUBLIC_` variable. If lost or exposed, replace ADMIN_TOKEN in your hosting settings and redeploy: previous token sessions stop granting owner access. Attempts are limited to ten per fifteen minutes per client address using the database.
 
-1. Create your own Resend account and add a domain you control.
-2. Follow Resend’s domain-verification instructions in your DNS provider and wait until sending is verified.
-3. Create an API key for sending email.
-4. Set OWNER_EMAIL to your own inbox, RESEND_API_KEY to that private key, and EMAIL_FROM to a sender on the verified domain.
-5. Restart Ahoy locally, or redeploy after changing Vercel environment variables. Choose **Sign in**, enter the address configured in OWNER_EMAIL and open the email link. It expires after 15 minutes and works once.
+### Optional: keep email sign-in available
 
-For local email sign-in, use `APP_URL=http://localhost:3000` (or the matching loopback port). Public deployments must use HTTPS. A localhost link opens on the device running Ahoy: open that email link on the same computer, not on your phone. If testing with `onboarding@resend.dev`, OWNER_EMAIL must be the email associated with your Resend account; otherwise verify a sending domain and use its sender address.
+Resend remains supported for owners who prefer a single-use email link. It is **optional** and does not send Instagram DMs or create Meta tokens.
 
-**You are done when:** the link opens the private workspace. The demo workspace is not proof that owner sign-in works.
+1. Create your own Resend account and verify a sending domain.
+2. Set OWNER_EMAIL to your inbox, RESEND_API_KEY to a sending key and EMAIL_FROM to your verified sender.
+3. Save and redeploy. If both methods are configured, select **Use email sign-in instead** on the sign-in page. Email links expire after fifteen minutes and work once.
+
+For local email testing, use the loopback APP_URL and open the email on the computer running Ahoy. Resend’s test sender `onboarding@resend.dev` can send only to the address associated with your Resend account. Other email providers and passkeys are not implemented.
+
+**You are done when:** the admin token or optional email link opens the private owner workspace. Exploring the demo does not prove owner sign-in works.
 
 ## 3. How hard is the Meta part?
 
@@ -149,7 +153,7 @@ The Resend API key and Turso database token are credentials for those providers.
 
 ## 7. Let Ahoy obtain the Instagram token
 
-1. Sign in to your deployed Ahoy instance using the owner email link.
+1. Sign in to your deployed Ahoy instance using your admin token or optional owner email link.
 2. Open **Instagram accounts → Connect account**.
 3. On Meta’s login screen, select the intended professional account(s) and approve the requested access. With Unified Login, choose the business portfolio first. Your Instagram password stays on Instagram’s own screen.
 4. Instagram redirects back to Ahoy. The server exchanges the temporary code for a token and encrypts it. Unified Login discovers every shared Instagram account. Only Instagram Login uses the 60-day exchange/refresh flow. Unified token lifetime depends on your configuration; Ahoy shows any expiry returned by Meta and requires reconnecting when access expires or is revoked.
@@ -178,6 +182,7 @@ The current app has not yet completed this real-account validation. Follow confi
 | A tester cannot connect | Confirm the right app/account role, accepted invitation, selected account and consent. |
 | Token works but messages fail | Check messaging/comment permissions, recipient eligibility, comment age and Meta’s error. A valid token alone is insufficient. |
 | Comments arrive but stay queued | Confirm Inngest keys, signing key and the deployed `/api/inngest` sync. |
+| Admin token is rejected | Copy the exact ADMIN_TOKEN value, without quotes or spaces; redeploy after changing it. Wait fifteen minutes if attempts are limited. |
 | Owner email never arrives | Check OWNER_EMAIL, Resend’s verified sending domain, EMAIL_FROM, provider logs and spam. Instagram settings will not fix email sign-in. |
 | It worked before, then stopped | Check account connection/token expiry, Inngest maintenance and whether access was revoked. |
 

@@ -37,11 +37,11 @@ The software can guide you through configuration, but creating and approving you
 1. Put this project in **your own GitHub repository**. Use your own fork of the repository.
 2. In **your own Vercel account**, choose Add New → Project → import the repository. Framework: Next.js. Use Node.js 22. The app includes the build command and framework configuration.
 3. Create a database in **your own Turso account**. Copy its `libsql://` URL and database auth token into the Vercel environment settings. Tables are created automatically. **Do not use a local `file:` database on Vercel**; the filesystem is not durable there.
-4. Configure **Resend** with a verified sending domain. Add the email settings below and set OWNER_EMAIL to your own address.
+4. Generate a separate **ADMIN_TOKEN** and add it to Vercel. Resend, OWNER_EMAIL and EMAIL_FROM are optional if you prefer email sign-in.
 5. Create an **Inngest** app. Add its event/signing keys to Vercel. Deploy, then sync `https://YOUR-DOMAIN/api/inngest` in Inngest. Confirm all four functions are registered: webhook ingestion, delivery, reconciliation and daily maintenance.
 6. Configure the Meta app using the next section.
 7. Set APP_URL to the public HTTPS address. Redeploy after changing environment variables.
-8. Open **Setup & health**, sign in from your inbox and connect Instagram. Check the token from Accounts and perform a controlled live test.
+8. Open **Setup & health**, sign in with your admin token (or optional email link) and connect Instagram. Check the token from Accounts and perform a controlled live test.
 9. When all live checks pass, set DEMO_MODE=false if you do not want the public demo. SAAS_ENABLED remains false. Live sending is a separate explicit switch.
 
 See [the Vercel demo quickstart](vercel-demo.md) for a no-credentials test deployment.
@@ -68,6 +68,7 @@ Copy `.env.example` to `.env.local` locally. On a hosting provider, use its envi
 | SAAS_ENABLED | Reserved flag; keep `false`. No hosted billing or platform-app registration route exists. |
 | DATABASE_URL | Turso `libsql://` URL on serverless hosting. Defaults to a local SQLite file for local/server use. |
 | DATABASE_AUTH_TOKEN | Turso token. Not needed for a local file. |
+| ADMIN_TOKEN | Recommended owner sign-in: generated 32–256 URL-safe characters. Rotate and redeploy to revoke token sessions. |
 | OWNER_EMAIL | The only email allowed to sign in to the real self-hosted workspace. |
 | RESEND_API_KEY | Sends sign-in emails through Resend. |
 | EMAIL_FROM | Verified Resend sender such as `Ahoy <hello@yourdomain.com>`. |
@@ -92,11 +93,9 @@ Keep a secure backup of ENCRYPTION_KEY. Changing it makes existing encrypted tok
 
 ## Why is Resend here?
 
-Resend delivers **the email link you use to sign in to Ahoy**. It does not send Instagram DMs, create Meta tokens or connect the Instagram account. Those use Meta’s API. The demo needs no email provider.
+Resend optionally delivers one-use email links for owner sign-in. The recommended self-hosted setup uses ADMIN_TOKEN and does not need Resend, a sending domain or OWNER_EMAIL. Configure all three email variables only if you want the email option. It does not send Instagram DMs or create Meta tokens.
 
-The product spec asks for email magic-link sign-in. This implementation currently uses Resend specifically, so real owner sign-in needs its API key and a verified sending domain. SMTP, password and passkey alternatives are not implemented. Resend is an implementation choice, not an Instagram requirement.
-
-For a nontechnical single-owner product, this is additional setup friction; an alternative owner sign-in method would be a separate product change. Do not remove authentication from a public deployment to skip it.
+Admin-token sign-in creates a seven-day HttpOnly session. The token is checked on the server with a constant-time hash comparison; only session hashes and a credential fingerprint are stored. Changing/removing ADMIN_TOKEN revokes token-based owner sessions. Email sessions remain independent. Database-backed throttling limits attempts to ten per fifteen minutes per client address; expired counters are cleaned by daily maintenance. On a custom reverse proxy, configure trustworthy forwarded client-address headers.
 
 ## Meta setup
 

@@ -16,7 +16,7 @@ An MIT-licensed, self-hostable Instagram comment-to-DM app. Start with the demo,
 | Keep my test data between visits | [Add Turso after the demo works](docs/vercel-demo.md#keep-your-test-data-optional) |
 | Run it on my computer | [Local demo](#run-it-on-your-computer) |
 | Connect a real Instagram account | [Business vs Creator and Meta setup](docs/instagram-setup.md) |
-| Configure real hosting, email and workflows | [Self-hosting reference](docs/operations.md) |
+| Configure real hosting, owner access and workflows | [Self-hosting reference](docs/operations.md) |
 
 ## Try it on Vercel
 
@@ -61,7 +61,17 @@ Open **http://localhost:3000**. No environment variables are required. Local dem
 
 Read [the step-by-step Instagram guide](docs/instagram-setup.md) before setting up credentials. It explains account types, app setup, callbacks, tester invitations and the access token Ahoy obtains through **Connect account**.
 
-For real owner sign-in, the current code uses Resend to deliver the sign-in email. For durable data and background delivery on Vercel, configure Turso and Inngest. Keep live sends off until your controlled live test is ready. Hosted Cloud and follow confirmation are unavailable.
+For private owner sign-in, set a generated `ADMIN_TOKEN` in your hosting environment and enter it on the sign-in page. Resend email links remain optional. For durable data and background delivery on Vercel, configure Turso and Inngest. Keep live sends off until your controlled live test is ready. Hosted Cloud and follow confirmation are unavailable.
+
+## Private owner sign-in without Resend
+
+Generate a separate secret on your computer:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Save the generated value as `ADMIN_TOKEN` in Vercel’s private Environment Variables (or `.env.local`), set your public HTTPS `APP_URL`, and redeploy. On Vercel, connect Turso for durable owner data. Open **Sign in** and enter the token. Do not use a Meta token or put ADMIN_TOKEN in a `NEXT_PUBLIC_` variable. Changing/removing it and redeploying revokes existing admin-token sessions. Optional email sign-in appears only when its Resend settings are complete. See [owner sign-in setup](docs/instagram-setup.md#2-sign-in-with-your-admin-token-no-email-service-needed).
 
 ## Checks and project status
 

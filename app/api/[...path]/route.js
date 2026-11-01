@@ -9,6 +9,7 @@ import { deleteAccountData } from '../../../lib/retention.mjs';
 import { storageConfig } from '../../../lib/storage.mjs';
 import { signInBaseUrl,sendSignInEmail } from '../../../lib/email-auth.mjs';
 import { diagnostics } from '../../../lib/diagnostics.mjs';
+import { authOptions,adminSignIn } from '../../../lib/admin-auth.mjs';
 import { loginMode,authorizationUrl,exchangeConnection } from '../../../lib/instagram.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -18,6 +19,7 @@ const emailValid=email=>typeof email==='string' && email.length<255 && /^[^\s@]+
 async function body(req) {const text=await req.text(); if(text.length>32768) throw new Error('This request is too large.');return JSON.parse(text||'{}');}
 export async function GET(req,context) { try {
  await init(); const {path}=await context.params; const route=path.join('/'); const url=new URL(req.url);
+ if(route==='auth/options') return json(authOptions());
  if(route==='session') {
   const who=await identity(req); if(who) return json(who);
   if(process.env.DEMO_MODE!=='false') {const response=json({demo:true,newSession:true});response.headers.set('Set-Cookie',demoCookie()+secure());return response;}
@@ -109,6 +111,14 @@ export async function POST(req,context) {try {
   if(route==='waitlist') await db().execute({sql:'INSERT OR IGNORE INTO waitlist(email,use_case) VALUES(?,?)',args:[b.email.toLowerCase(),String(b.useCase||'').slice(0,1000)]});
   else await db().execute({sql:'INSERT INTO setup_requests(id,email,details) VALUES(?,?,?)',args:[randomUUID(),b.email.toLowerCase(),String(b.details||'').slice(0,2000)]});
   return json({ok:true});
+ }
+ if(route==='auth/admin') {
+  try {
+    const session=await adminSignIn(req,b.token);
+    const response=json({ok:true});
+    response.headers.set('Set-Cookie',`ahoy_session=${session}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${secure()}`);
+    return response;
+  } catch(e) {return json({error:e.message},e.status||400);}
  }
  if(route==='auth/login') {
   if(!emailValid(b.email)) throw new Error('Please enter a valid email address.');

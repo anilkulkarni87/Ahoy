@@ -15,7 +15,7 @@ You should not have to paste an Instagram access token into an Ahoy form, genera
 
 | Account type | A practical choice for | Ahoy eligibility |
 | --- | --- | --- |
-| **Creator** | A person whose audience follows their work: an artist, writer, educator, influencer or independent content creator. | Supported account category for the Instagram Login API Ahoy uses. |
+| **Creator** | A person whose audience follows their work: an artist, writer, educator, influencer or independent content creator. | Supported professional account category. |
 | **Business** | A shop, service, brand, agency or organisation whose audience follows the business. | Supported account category for the same API. |
 | **Personal** | An ordinary personal Instagram profile. | Not supported by this integration. Switch to a professional account first. |
 
@@ -88,16 +88,40 @@ Set APP_URL to that same address without a trailing slash. The redirect path and
 
 ## 5. Create and configure your Meta app
 
-1. Open [Meta for Developers → My Apps](https://developers.facebook.com/apps/), sign in and complete developer registration if prompted.
-2. Create an app and select the use case/product that supports **Instagram API with Instagram Login**. Meta changes the creation wizard; use its current Instagram Login instructions rather than selecting an unrelated template simply because its name includes “Business”.
-3. Open the Instagram product’s **API setup with Instagram login** configuration. This app uses Instagram Login and `graph.instagram.com`. Do not substitute a Facebook Page-token tutorial; Facebook Login is a different integration flow.
-4. Register the redirect URI from the table above in the login configuration. Add required app domains and policy/deletion URLs where the dashboard asks for them.
-5. Copy the application ID and corresponding secret for this Instagram Login configuration to META_APP_ID and META_APP_SECRET in **your hosting provider’s private environment settings**. Keep the matching pair together. The dashboard may show both a parent Meta app ID and Instagram product credentials; do not assume all IDs/secrets are interchangeable.
-6. Generate a random verification string locally using the command below. Save it as META_VERIFY_TOKEN. This is a string **you choose**, not an Instagram access token.
-7. Register the webhook callback URL and enter the identical verification string when Meta asks for the **Verify token**. Configure comment and message subscriptions. Ahoy verifies callback challenges and signs up the connected account for these event fields during connection.
-8. Review the permissions Ahoy requests: `instagram_business_basic`, `instagram_business_manage_comments` and `instagram_business_manage_messages`. Their names contain “business” even when the Instagram profile is **Creator**. Request only the permissions required for this use case; Ahoy does not request content publishing.
-9. If testing in development mode, assign the appropriate Instagram tester/app roles and accept any invitations from the intended test account. Confirm all required account/app roles and granted permissions. Adding someone to a tester list alone is not proof that consent is complete.
-10. Set META_API_VERSION to a currently supported version shown by Meta, save your hosting settings and redeploy Ahoy.
+First check the heading in your Meta dashboard. **New apps use Unified Login.** Existing apps may still offer Instagram Login. Ahoy supports both; the credentials and permissions differ.
+
+### A. Your dashboard says “API setup with Unified login”
+
+1. Open [Meta for Developers → My Apps](https://developers.facebook.com/apps/) and your app. Under **Manage messaging & content on Instagram → Customize**, open **API setup with Unified login**.
+2. Connect the app to a business portfolio if prompted. A **business portfolio** is Meta’s container for assets and access; it is separate from choosing Business versus Creator on Instagram. Both professional account types can connect. A Facebook Page is not required for Unified Login.
+3. Select **Create new configuration**, or select an **Instagram Login Compatible** configuration. Use a **Business Integration System User Access Token** configuration. Select **Use this configuration**.
+4. Review its permissions. Ahoy needs `instagram_basic`, `instagram_manage_comments` and `instagram_manage_messages`. Remove publishing and advertising permissions if your configuration permits and you do not need them. Check the configuration preview for token expiry.
+5. Save your exact HTTPS **Redirect URL**: `https://YOUR_DOMAIN/api/instagram/callback`. Copy the numeric **Configuration ID** (`config_id` in the generated Login URL).
+6. In **Vercel → Project → Settings → Environment Variables**, set:
+
+   ```text
+   META_LOGIN_MODE=unified
+   META_CONFIG_ID=YOUR_CONFIGURATION_ID
+   META_APP_ID=YOUR_META_APP_ID
+   META_APP_SECRET=YOUR_META_APP_SECRET
+   APP_URL=https://YOUR_DOMAIN
+   META_API_VERSION=YOUR_SUPPORTED_VERSION
+   ```
+
+   Get the matching **Meta App ID and App Secret from App settings → Basic**. Paste values without quotation marks or surrounding spaces. APP_URL is the site address, without `/api/...` or a trailing slash. Secrets belong only in private environment settings.
+7. Under **Add account**, invite your professional Instagram account as an Instagram Tester. Accept the invitation on Instagram’s website under **Settings → Website permissions → Apps and websites → Tester Invites**.
+8. Configure **Webhooks → Instagram object** on the Meta app. Use your `/api/webhook` URL and the same `META_VERIFY_TOKEN` in both places. Enable `comments` and `messages`. Ahoy also subscribes each shared account during connection.
+9. Redeploy after saving environment variables. Sign in to Ahoy as owner and select **Connect account**. Meta opens its Unified Login screen. Log in with Instagram or Facebook, choose the business portfolio and Instagram accounts to share, and allow message access. Ahoy exchanges the code, discovers the selected accounts and encrypts the token. Do not paste a token into chat or an Ahoy form.
+
+Standard Access is for testing with appropriate app roles. Serving other clients requires the access level, App Review and Live mode described by Meta. Configuration alone is not approval.
+
+### B. Your existing dashboard says “API setup with Instagram login”
+
+1. Set `META_LOGIN_MODE=instagram` and leave `META_CONFIG_ID` empty.
+2. Copy the **Instagram App ID and corresponding Instagram App Secret** from this product’s setup into `META_APP_ID` and `META_APP_SECRET`.
+3. Register the exact HTTPS callback from the table above. Configure the product’s webhook callback and verify token, plus `comments` and `messages` subscriptions.
+4. Grant `instagram_business_basic`, `instagram_business_manage_comments` and `instagram_business_manage_messages`. Add the required app/account roles and accept tester invitations.
+5. Set APP_URL and a supported META_API_VERSION, save, redeploy, then connect through Ahoy. This flow uses `graph.instagram.com` and a long-lived Instagram token. Keep Inngest maintenance active for token refresh.
 
 Generate a private verification string on your own machine:
 
@@ -113,7 +137,9 @@ Do not paste it into a public issue. Generate a separate value for ENCRYPTION_KE
 
 | Name | Where it comes from | What you do |
 | --- | --- | --- |
-| META_APP_ID | The developer app’s Instagram Login configuration. | Copy to the hosting environment once. It identifies the app. |
+| META_APP_ID | Unified: App settings → Basic. Existing Instagram Login: product login setup. | Copy to the hosting environment once. It identifies the app. |
+| META_CONFIG_ID | Unified Login configuration (numeric ID). | Required for Unified Login; leave empty for Instagram Login. |
+| META_LOGIN_MODE | Your dashboard’s setup type. | `unified` for new apps, `instagram` for existing Instagram Login apps. |
 | META_APP_SECRET | The corresponding application secret. | Store privately in the hosting environment. Used on the server. |
 | META_VERIFY_TOKEN | A random string **you generate**. | Put the same value in Ahoy and Meta’s webhook verification field. |
 | Instagram access token | Instagram issues it after the account owner approves login. | **Ahoy handles it. Do not paste one manually.** |
@@ -125,8 +151,8 @@ The Resend API key and Turso database token are credentials for those providers.
 
 1. Sign in to your deployed Ahoy instance using the owner email link.
 2. Open **Instagram accounts → Connect account**.
-3. On Instagram’s login screen, select the intended professional account and approve the requested access. Your Instagram password stays on Instagram’s own screen.
-4. Instagram redirects back to Ahoy. The server exchanges the temporary code for an access token, requests a longer-lived token, encrypts it and stores its expiry.
+3. On Meta’s login screen, select the intended professional account(s) and approve the requested access. With Unified Login, choose the business portfolio first. Your Instagram password stays on Instagram’s own screen.
+4. Instagram redirects back to Ahoy. The server exchanges the temporary code for a token and encrypts it. Unified Login discovers every shared Instagram account. Only Instagram Login uses the 60-day exchange/refresh flow. Unified token lifetime depends on your configuration; Ahoy shows any expiry returned by Meta and requires reconnecting when access expires or is revoked.
 5. Confirm your real username appears in Ahoy. Choose **Check connection** to validate the token.
 
 **You are done when:** your account appears in the private workspace and Check connection succeeds. This validates account access, not permission to message every possible recipient.
@@ -147,6 +173,7 @@ The current app has not yet completed this real-account validation. Follow confi
 | --- | --- |
 | “Professional account required” | Confirm the selected profile is Creator or Business, not merely public. |
 | “Redirect URI mismatch” | Compare the full callback URL, HTTPS scheme, hostname and path character by character. |
+| Invalid platform app | Check the dashboard setup type. Unified Login needs META_LOGIN_MODE=unified, META_CONFIG_ID and the Meta app credentials. Redeploy; the Connect button should open Facebook’s dialog with config_id. |
 | Webhook verification fails | Check APP_URL, the deployed `/api/webhook` address and the exact same META_VERIFY_TOKEN on both sides. |
 | A tester cannot connect | Confirm the right app/account role, accepted invitation, selected account and consent. |
 | Token works but messages fail | Check messaging/comment permissions, recipient eligibility, comment age and Meta’s error. A valid token alone is insufficient. |
@@ -162,3 +189,5 @@ The current app has not yet completed this real-account validation. Follow confi
 - [Resend: domains and verification](https://resend.com/docs/dashboard/domains/introduction).
 
 Documentation reviewed October 31, 2026. The Meta-owned Postman collection was accessible; Meta’s developer/help pages were rate-limited or login-gated. Exact current dashboard/mobile screenshots and a real-account walkthrough still need validation. No guessed screenshots, guaranteed setup times or approval guarantees are supplied here.
+
+Unified Login reference: [Meta’s migration guide](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/migration-guide) and [Facebook Login for Business](https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business). Verified against Meta’s published text through a text reader on 31 October 2026. Live connection and delivery still require an owner-controlled Meta test.

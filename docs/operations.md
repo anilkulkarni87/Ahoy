@@ -72,7 +72,9 @@ Copy `.env.example` to `.env.local` locally. On a hosting provider, use its envi
 | RESEND_API_KEY | Sends sign-in emails through Resend. |
 | EMAIL_FROM | Verified Resend sender such as `Ahoy <hello@yourdomain.com>`. |
 | ENCRYPTION_KEY | Exactly 64 hex characters; AES-256-GCM key for Instagram access tokens. |
-| META_APP_ID | Instagram application ID for your Instagram Login configuration. |
+| META_APP_ID | Unified Login: Meta app ID from App settings → Basic. Instagram Login: product application ID. |
+| META_LOGIN_MODE | `unified` for new Meta apps; `instagram` for existing Instagram Login apps. |
+| META_CONFIG_ID | Numeric Unified Login configuration ID; required in unified mode. |
 | META_APP_SECRET | App secret used for OAuth exchanges and webhook signatures. |
 | META_VERIFY_TOKEN | A random string you choose; enter the identical value in Meta’s webhook settings. |
 | META_API_VERSION | A currently supported Graph API version from your app dashboard. Deliberately not hard-coded to an unverified version. |
@@ -100,7 +102,7 @@ For a nontechnical single-owner product, this is additional setup friction; an a
 
 **Start with the [plain-language Instagram setup guide](instagram-setup.md).** It explains Business versus Creator, how to switch a Personal account, which credentials to copy, tester roles, callback addresses and common errors.
 
-| Choose | When it fits | Works with Ahoy’s Instagram Login integration? |
+| Choose | When it fits | Eligible professional account? |
 | --- | --- | --- |
 | **Creator** | You are an individual creator, educator, artist or public figure. | Yes, subject to permissions and eligibility. |
 | **Business** | The profile represents a shop, service, brand or organisation. | Yes, subject to the same integration requirements. |
@@ -110,16 +112,11 @@ Both Business and Creator are **professional accounts**. Keep either if you alre
 
 **How easy is it?** Choosing the account type is straightforward; configuring the Meta app is the fiddly one-time step. Obtaining the Instagram access token is then automatic through Ahoy’s **Connect account** button. You do not manually paste an Instagram access token into this app. Review requirements and timing depend on Meta; app creation is not approval.
 
-Use [Meta’s official Instagram Login documentation](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/) and [private reply documentation](https://developers.facebook.com/docs/instagram-platform/private-replies/) as the current authority. The Meta-owned Postman collection confirms support for Business and Creator accounts with Instagram Login; developer/help pages were rate-limited or login-gated. Exact current screens and permission behavior must still be confirmed live.
+Follow the maintained [Instagram onboarding guide](instagram-setup.md), including the separate Unified Login and existing Instagram Login instructions. New apps use Unified Login: Meta app credentials, `META_CONFIG_ID`, `instagram_*` permissions, a Business Integration System User token, and `graph.facebook.com`. Existing Instagram Login uses product credentials, `instagram_business_*` permissions, a refreshed Instagram token, and `graph.instagram.com`. Ahoy persists the login type per connected account so changing the setup does not reroute existing tokens.
 
-1. Convert the Instagram account to Business or Creator if needed.
-2. Create your own Meta developer app and configure the Instagram product with Instagram Login.
-3. Register the redirect: `https://YOUR-DOMAIN/api/instagram/callback`.
-4. Register the webhook: `https://YOUR-DOMAIN/api/webhook`, using your META_VERIFY_TOKEN.
-5. Configure comment webhook subscriptions and review the requested `instagram_business_basic`, `instagram_business_manage_comments`, and `instagram_business_manage_messages` scopes. Reduce or change them if Meta’s current use case rules require it.
-6. Add eligible app roles/testers and accept their invitations for development-mode testing. Do not assume any public Instagram account can test an unreviewed app.
-7. Sign in as the owner in Ahoy, open Instagram accounts and choose Connect account. OAuth exchanges a code for a long-lived token, encrypts it, and subscribes the account to comment events.
-8. Use Check connection to confirm a token still works. This does **not** prove messaging permissions or Meta approval.
+Unified tokens are not sent to Instagram’s refresh endpoint. Their lifetime depends on the Meta configuration. Ahoy displays the expiry returned by Meta; an absent expiry is labelled “Not reported by Meta”, rather than promising permanent access. Reconnect expired or revoked Unified connections. Automated Business Integration System User token rotation is not implemented.
+
+Use **Check connection** and complete a real comment-to-DM test. Unit tests and setup checks do not prove Meta approval, webhook delivery or real messaging permissions.
 
 The requested behavior is one private reply to a requested comment. No cold messaging, scraping or password-based Instagram login exists. Delayed sends may expire under Meta’s messaging rules. Follow confirmation is intentionally rejected by the API and has no enabling UI; a tap is not assumed to establish a valid messaging window.
 

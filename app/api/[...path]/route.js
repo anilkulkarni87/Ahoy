@@ -9,6 +9,7 @@ import { deleteAccountData } from '../../../lib/retention.mjs';
 import { storageConfig } from '../../../lib/storage.mjs';
 import { signInBaseUrl,sendSignInEmail } from '../../../lib/email-auth.mjs';
 import { diagnostics } from '../../../lib/diagnostics.mjs';
+import { loginMode,authorizationUrl,exchangeConnection } from '../../../lib/instagram.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const json=(data,status=200)=>NextResponse.json(data,{status,headers:{'Cache-Control':'no-store'}});
@@ -46,29 +47,24 @@ export async function GET(req,context) { try {
   if(who.demo) await seed(tenant);
   const list=await campaigns(tenant);
   const activity=(await query(tenant,'SELECT * FROM activity WHERE tenant=? ORDER BY datetime(created_at) DESC LIMIT 200')).rows;
-  const accounts=who.demo?[{id:'demo-account',username:'the.slow.studio',demo:true}]:(await query(tenant,'SELECT id,username,expires_at FROM accounts WHERE tenant=?')).rows;
+  const accounts=who.demo?[{id:'demo-account',username:'the.slow.studio',demo:true}]:(await query(tenant,'SELECT id,username,expires_at,auth_type FROM accounts WHERE tenant=?')).rows;
   const links=(await query(tenant,'SELECT campaign_id,sum(clicks) AS clicks FROM links WHERE tenant=? GROUP BY campaign_id')).rows;
   const counts=(await query(tenant,"SELECT count(*) AS comments,sum(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent FROM activity WHERE tenant=?")).rows[0];
   return json({campaigns:list,activity,accounts,links,counts,demo:who.demo,temporaryStorage:storageConfig().temporary,diagnostics:diagnostics(who.demo?0:accounts.length)});
  }
  if(route==='instagram/connect') {
   if(who.demo) return json({error:'Sign in as the owner to connect a real account. Demo mode never accesses Instagram.'},403);
-  if(!process.env.META_APP_ID||!process.env.APP_URL?.startsWith('https://')) return json({error:'Complete the Instagram and public address setup checks first.'},400);
-  const state=randomBytes(32).toString('hex');
-  const auth=new URL('https://www.instagram.com/oauth/authorize');auth.search=new URLSearchParams({client_id:process.env.META_APP_ID,redirect_uri:process.env.APP_URL+'/api/instagram/callback',response_type:'code',scope:'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments',state}).toString();
+  const state=loginMode()+'.'+randomBytes(32).toString('hex');
+  const auth=authorizationUrl(state);
   const response=NextResponse.redirect(auth);response.headers.set('Set-Cookie',`ahoy_oauth=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secure()}`);return response;
  }
  if(route==='instagram/callback') {
   if(who.demo) return json({error:'Owner sign-in required.'},403);
-  const cookie=(req.headers.get('cookie')||'').match(/ahoy_oauth=([a-f0-9]+)/)?.[1];
+  const cookie=(req.headers.get('cookie')||'').match(/ahoy_oauth=([^;]+)/)?.[1];
   if(!cookie||cookie!==url.searchParams.get('state')||!url.searchParams.get('code')) return json({error:'This connection expired. Start again from Accounts.'},400);
-  const r=await fetch('https://api.instagram.com/oauth/access_token',{method:'POST',body:new URLSearchParams({client_id:process.env.META_APP_ID,client_secret:process.env.META_APP_SECRET,grant_type:'authorization_code',redirect_uri:process.env.APP_URL+'/api/instagram/callback',code:url.searchParams.get('code')}),signal:AbortSignal.timeout(15000)});
-  const short=await r.json();if(!r.ok||!short.access_token) throw new Error('Instagram could not connect. Check your app settings and try again.');
-  const exchange=await fetch('https://graph.instagram.com/access_token?'+new URLSearchParams({grant_type:'ig_exchange_token',client_secret:process.env.META_APP_SECRET,access_token:short.access_token}),{signal:AbortSignal.timeout(15000)});
-  const long=await exchange.json();if(!exchange.ok||!long.access_token) throw new Error('Instagram could not create a long-lived connection.');
-  const profile=await meta('me?fields=user_id,username',long.access_token);const id=String(profile.user_id||profile.id);
-  await meta(`${id}/subscribed_apps`,long.access_token,{method:'POST',body:JSON.stringify({subscribed_fields:'comments,messages'})});
-  await db().execute({sql:'INSERT INTO accounts(id,tenant,username,token,expires_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token,username=excluded.username,expires_at=excluded.expires_at',args:[id,tenant,profile.username,encrypt(long.access_token),new Date(Date.now()+long.expires_in*1000).toISOString()]});
+  if(!cookie.startsWith(loginMode()+'.')) return json({error:'Login settings changed. Start again from Accounts.'},400);
+  const accounts=await exchangeConnection(url.searchParams.get('code'));
+  await db().batch(accounts.map(a=>({sql:'INSERT INTO accounts(id,tenant,username,token,expires_at,auth_type) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token,username=excluded.username,expires_at=excluded.expires_at,auth_type=excluded.auth_type',args:[a.id,tenant,a.username,encrypt(a.token),a.expiresAt,a.authType]})),'write');
   const response=NextResponse.redirect(new URL('/?view=accounts&connected=1',req.url));response.headers.set('Set-Cookie',`ahoy_oauth=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure()}`);return response;
  }
  if(route==='inquiries') {
@@ -79,7 +75,7 @@ export async function GET(req,context) { try {
   if(who.demo) return json({data:[]});
   const account=(await query(tenant,'SELECT * FROM accounts WHERE tenant=? AND id=?',[url.searchParams.get('accountId')||''])).rows[0];
   if(!account) return json({error:'Connect an Instagram account first.'},400);
-  return json(await meta(`${account.id}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink&limit=25`,decrypt(account.token)));
+  return json(await meta(`${account.id}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink&limit=25`,decrypt(account.token),{},account.auth_type));
  }
  return json({error:'This page could not be found.'},404);
  } catch(e){console.error('Ahoy request failed:',e.name);return json({error:e.message||'Something went wrong. Please try again.'},400);} }
@@ -162,7 +158,7 @@ export async function POST(req,context) {try {
  if(route==='accounts/check') {
   if(who.demo) return json({ok:true,message:'This is a sample account. Connect your own after setup.'});
   const account=(await query(tenant,'SELECT * FROM accounts WHERE tenant=? AND id=?',[b.id])).rows[0];if(!account) throw new Error('Account not found.');
-  const result=await meta('me?fields=user_id,username',decrypt(account.token));return json({ok:true,message:'Connected as @'+result.username+'. Token is valid; message permissions still require a live test.'});
+  const result=await meta(`${account.id}?fields=id,username`,decrypt(account.token),{},account.auth_type);return json({ok:true,message:'Connected as @'+result.username+'. Token is valid; message permissions still require a live test.'});
  }
  if(route==='accounts/disconnect') {
   if(who.demo) throw new Error('This is a sample account. Your Instagram is not connected.');

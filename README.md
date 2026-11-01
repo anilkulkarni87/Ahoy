@@ -79,3 +79,5 @@ The app has been tested locally, including serverless-storage configuration, mat
 [MIT](LICENSE). Fork, modify and self-host it. See [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md).
 
 Your `.env.local`, tokens, database, build output and deployment metadata are excluded from Git. Never add them manually. The supplied product specification and PDF are design references; they are not evidence of Meta approval or completed production testing.
+
+New Meta apps use **Unified Login**. Set `META_LOGIN_MODE=unified` and the numeric `META_CONFIG_ID`, then use the Meta app ID/secret from App settings → Basic. See the [step-by-step Instagram setup guide](docs/instagram-setup.md). Existing Instagram Login connections remain supported.

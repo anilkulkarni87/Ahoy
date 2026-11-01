@@ -72,3 +72,31 @@ test('failed diagnostic probes preserve the discovery error and disclose only nu
  const fetchImpl=async url=>{url=new URL(url);if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'private-token'});if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[]});return new Response(JSON.stringify({error:{code:100,message:'private-provider-payload'}}),{status:400});};
  await assert.rejects(()=>exchangeConnection('code',env,fetchImpl),e=>e.connectionDiagnostics.portfolioCheckCode===100&&e.connectionDiagnostics.permissionCheckCode===100&&!JSON.stringify(e.connectionDiagnostics).includes('private-provider-payload'));
 });
+
+test('explicit account ID recovers empty discovery only after profile and subscription verification',async()=>{
+ const calls=[];const fetchImpl=async(url,options)=>{url=new URL(url);calls.push(url.pathname);
+  if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'oauth-issued-token'});
+  assert.equal(options.headers.Authorization,'Bearer oauth-issued-token');
+  if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[]});
+  if(url.pathname.endsWith('/subscribed_apps')){assert.deepEqual(JSON.parse(options.body),{subscribed_fields:'comments,messages'});return response({success:true});}
+  return response({id:'333',username:'configured-owner'});
+ };
+ const accounts=await exchangeConnection('code',{...env,META_INSTAGRAM_ACCOUNT_ID:'333'},fetchImpl);
+ assert.equal(accounts.length,1);assert.equal(accounts[0].id,'333');assert.equal(accounts[0].token,'oauth-issued-token');assert.equal(accounts[0].authType,'unified');assert.ok(calls.includes('/v99.0/333/subscribed_apps'));
+});
+test('configured account must be accessible and match the requested ID',async()=>{
+ for(const result of [new Response(JSON.stringify({error:{code:100,message:'private-provider-payload'}}),{status:400}),response({id:'999',username:'wrong-account'})]) {
+  let subscriptions=0;const fetchImpl=async url=>{url=new URL(url);if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'token'});if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[]});if(url.pathname.endsWith('/subscribed_apps'))subscriptions++;return result;};
+  await assert.rejects(()=>exchangeConnection('code',{...env,META_INSTAGRAM_ACCOUNT_ID:'333'},fetchImpl),e=>/cannot access|different Instagram account/.test(e.message)&&!e.message.includes('private-provider-payload'));
+  assert.equal(subscriptions,0);
+ }
+});
+test('account fallback still fails when Meta refuses its webhook subscription',async()=>{
+ const fetchImpl=async url=>{url=new URL(url);if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'token'});if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[]});if(url.pathname.endsWith('/subscribed_apps'))return response({success:false});return response({id:'333',username:'owner'});};
+ await assert.rejects(()=>exchangeConnection('code',{...env,META_INSTAGRAM_ACCOUNT_ID:'333'},fetchImpl),/webhook subscriptions/);
+});
+test('normal discovery remains authoritative and invalid fallback IDs fail before OAuth',async()=>{
+ const urls=[];const fetchImpl=async url=>{url=new URL(url);urls.push(url.pathname);if(url.pathname.endsWith('/oauth/access_token'))return response({access_token:'token'});if(url.pathname.endsWith('/assigned_instagram_accounts'))return response({data:[{id:'111'}]});if(url.pathname.endsWith('/subscribed_apps'))return response({success:true});return response({id:'111',username:'discovered'});};
+ const accounts=await exchangeConnection('code',{...env,META_INSTAGRAM_ACCOUNT_ID:'333'},fetchImpl);assert.equal(accounts[0].id,'111');assert.ok(!urls.some(path=>path.includes('/333')));
+ for(const id of ['rashmiandi','“333”','333/permissions',' 333','0'])assert.throws(()=>oauthConfig({...env,META_INSTAGRAM_ACCOUNT_ID:id}),/META_INSTAGRAM_ACCOUNT_ID/);
+});

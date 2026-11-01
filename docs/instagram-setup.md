@@ -119,6 +119,20 @@ First check the heading in your Meta dashboard. **New apps use Unified Login.** 
 
 Standard Access is for testing with appropriate app roles. Serving other clients requires the access level, App Review and Live mode described by Meta. Configuration alone is not approval.
 
+### If Meta returns an empty account list after you selected your account
+
+Sometimes `/me/assigned_instagram_accounts` returns `data: []` even though a direct request to the Instagram account succeeds. For a self-hosted installation using your own account, set the optional private hosting variable:
+
+```text
+META_INSTAGRAM_ACCOUNT_ID=YOUR_NUMERIC_INSTAGRAM_ACCOUNT_ID
+```
+
+Get this ID from Meta Business Settings → Accounts → Instagram accounts. It is not the business portfolio ID, app ID, system-user ID or username. Save and redeploy, then start a fresh **Connect account** attempt.
+
+Ahoy still completes OAuth. If discovery is genuinely empty, it requests this specific account with the newly issued token, verifies the returned ID and profile, and requires a successful `comments,messages` webhook subscription before saving. A token that cannot access or subscribe the account is rejected. An unexpected account-list format remains an error. No manually generated access token is needed or stored through environment settings.
+
+Leave this setting empty when automatic account discovery works. This option addresses account discovery; it does not grant additional Meta permissions or establish App Review approval.
+
 ### B. Your existing dashboard says “API setup with Instagram login”
 
 1. Set `META_LOGIN_MODE=instagram` and leave `META_CONFIG_ID` empty.
@@ -142,6 +156,7 @@ Do not paste it into a public issue. Generate a separate value for ENCRYPTION_KE
 | Name | Where it comes from | What you do |
 | --- | --- | --- |
 | META_APP_ID | Unified: App settings → Basic. Existing Instagram Login: product login setup. | Copy to the hosting environment once. It identifies the app. |
+| META_INSTAGRAM_ACCOUNT_ID | Optional: your Instagram account ID from Meta Business Settings. | Unified Login fallback only when account discovery returns an empty list; direct access and subscription are still verified. |
 | META_CONFIG_ID | Unified Login configuration (numeric ID). | Required for Unified Login; leave empty for Instagram Login. |
 | META_LOGIN_MODE | Your dashboard’s setup type. | `unified` for new apps, `instagram` for existing Instagram Login apps. |
 | META_APP_SECRET | The corresponding application secret. | Store privately in the hosting environment. Used on the server. |

@@ -7,6 +7,7 @@ import { processComment,meta } from '../../../lib/engine.mjs';
 import { inngest,dispatchEvent } from '../../../lib/jobs.mjs';
 import { deleteAccountData } from '../../../lib/retention.mjs';
 import { storageConfig } from '../../../lib/storage.mjs';
+import { signInBaseUrl,sendSignInEmail } from '../../../lib/email-auth.mjs';
 import { diagnostics } from '../../../lib/diagnostics.mjs';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -116,14 +117,18 @@ export async function POST(req,context) {try {
  if(route==='auth/login') {
   if(!emailValid(b.email)) throw new Error('Please enter a valid email address.');
   if(!process.env.RESEND_API_KEY||!process.env.OWNER_EMAIL||!process.env.EMAIL_FROM) throw new Error('Email sign-in is not configured yet. You can explore the demo or follow the setup guide.');
-  if(b.email.toLowerCase()!==process.env.OWNER_EMAIL.toLowerCase()) return json({ok:true});
+  if(b.email.trim().toLowerCase()!==process.env.OWNER_EMAIL.trim().toLowerCase()) return json({ok:true});
   const pending=(await db().execute({sql:'SELECT * FROM auth_tokens WHERE email=? AND expires>?',args:[b.email.toLowerCase(),Date.now()+14*60000]})).rows;
   if(pending.length) return json({ok:true});
-  const token=randomBytes(32).toString('hex');const address=process.env.APP_URL;
-  if(!address?.startsWith('https://')) throw new Error('Set your public HTTPS address before enabling sign-in.');
+  const address=signInBaseUrl();
+  const token=randomBytes(32).toString('hex');
   await db().execute({sql:'INSERT INTO auth_tokens(hash,email,expires) VALUES(?,?,?)',args:[hash(token),b.email.toLowerCase(),Date.now()+15*60000]});
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:process.env.EMAIL_FROM,to:b.email,subject:'Your little doorway to Ahoy',text:`Welcome back. Sign in to your Ahoy workspace: ${address}/api/auth/verify?token=${token}\nThis link expires in 15 minutes. If you didn’t ask for it, ignore this email.`}),signal:AbortSignal.timeout(15000)});
-  if(!response.ok) {await db().execute({sql:'DELETE FROM auth_tokens WHERE hash=?',args:[hash(token)]});throw new Error('Your sign-in email could not be sent. Check the email setup and try again.');}
+  try {await sendSignInEmail({email:b.email,token,baseUrl:address});}
+  catch(e) {
+    await db().execute({sql:'DELETE FROM auth_tokens WHERE hash=?',args:[hash(token)]});
+    if(e.name==='TimeoutError'||e.name==='AbortError'||e instanceof TypeError) throw new Error('The email service could not be reached. Check your network and retry; this request will not block another attempt.');
+    throw e;
+  }
   return json({ok:true});
  }
  if(route==='auth/logout') { const response=json({ok:true});const value=(req.headers.get('cookie')||'').match(/ahoy_session=([a-f0-9]+)/)?.[1];if(value) await db().execute({sql:'DELETE FROM sessions WHERE hash=?',args:[hash(value)]});response.headers.set('Set-Cookie','ahoy_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');return response; }

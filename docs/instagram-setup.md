@@ -56,7 +56,9 @@ To configure the current email sign-in:
 2. Follow Resend’s domain-verification instructions in your DNS provider and wait until sending is verified.
 3. Create an API key for sending email.
 4. Set OWNER_EMAIL to your own inbox, RESEND_API_KEY to that private key, and EMAIL_FROM to a sender on the verified domain.
-5. Redeploy Ahoy. Choose **Sign in**, enter OWNER_EMAIL and open the email link. It expires after 15 minutes and works once.
+5. Restart Ahoy locally, or redeploy after changing Vercel environment variables. Choose **Sign in**, enter the address configured in OWNER_EMAIL and open the email link. It expires after 15 minutes and works once.
+
+For local email sign-in, use `APP_URL=http://localhost:3000` (or the matching loopback port). Public deployments must use HTTPS. A localhost link opens on the device running Ahoy: open that email link on the same computer, not on your phone. If testing with `onboarding@resend.dev`, OWNER_EMAIL must be the email associated with your Resend account; otherwise verify a sending domain and use its sender address.
 
 **You are done when:** the link opens the private workspace. The demo workspace is not proof that owner sign-in works.
 

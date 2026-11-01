@@ -62,7 +62,7 @@ Copy `.env.example` to `.env.local` locally. On a hosting provider, use its envi
 
 | Variable | Purpose |
 | --- | --- |
-| APP_URL | Your public HTTPS address, without a trailing slash. Local default: http://localhost:3000. |
+| APP_URL | Your public HTTPS address. For local email testing, use http://localhost:3000 on the same computer. Restart the server after editing .env.local. |
 | DEMO_MODE | `true` enables isolated demo workspaces; `false` requires owner sign-in. |
 | LIVE_SENDS_ENABLED | `false` by default. Set `true` only for a controlled live test after configuration and policy validation. |
 | SAAS_ENABLED | Reserved flag; keep `false`. No hosted billing or platform-app registration route exists. |

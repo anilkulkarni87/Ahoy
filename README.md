@@ -16,6 +16,7 @@ An MIT-licensed, self-hostable Instagram comment-to-DM app. Start with the demo,
 | Keep my test data between visits | [Add Turso after the demo works](docs/vercel-demo.md#keep-your-test-data-optional) |
 | Run it on my computer | [Local demo](#run-it-on-your-computer) |
 | Connect a real Instagram account | [Business vs Creator and Meta setup](docs/instagram-setup.md) |
+| Prepare for launch and review security limits | [Launch controls and security notes](SECURITY.md) |
 | Configure real hosting, owner access and workflows | [Self-hosting reference](docs/operations.md) |
 
 ## Try it on Vercel
@@ -93,6 +94,10 @@ npm run doctor
 ```
 
 The app has been tested locally, including serverless-storage configuration, matching, opt-outs, encryption, duplicate protection and retry behavior. An owner-controlled Vercel deployment has connected a real Instagram account and delivered a campaign DM after a real comment. This is one successful deployment, not certification of every account, permission or recovery path. The [reference](docs/operations.md#remaining-launch-work) lists launch gaps, including outstanding dependency advisories. Docker files are provided but have not been exercised here.
+
+## Product direction
+
+See the [prioritized value-add roadmap](docs/roadmap.md) for connection health, conversion analytics, reusable resources, optional Groq assistance and interactive resource choices. These are proposals, not shipped features.
 
 ## Contributing and licence
 

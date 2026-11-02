@@ -1,3 +1,7 @@
+import { launchPreview,prepareLaunch,launchBoundary } from '../../../lib/launch.mjs';
+import { checkButtonStatus } from '../../../lib/button-status.mjs';
+import { rateLimit } from '../../../lib/rate-limit.mjs';
+import { readLimitedText } from '../../../lib/request.mjs';
 import { NextResponse } from 'next/server';
 import { randomBytes,randomUUID,createHash,createHmac,timingSafeEqual } from 'node:crypto';
 import { db,init,query,campaigns,seed } from '../../../lib/db.mjs';
@@ -16,13 +20,13 @@ export const dynamic='force-dynamic';
 const json=(data,status=200)=>NextResponse.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const secure=()=>(process.env.VERCEL||process.env.APP_URL?.startsWith('https://'))?'; Secure':'';
 const emailValid=email=>typeof email==='string' && email.length<255 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-async function body(req) {const text=await req.text(); if(text.length>32768) throw new Error('This request is too large.');return JSON.parse(text||'{}');}
+async function body(req) {const text=await readLimitedText(req,32768);return JSON.parse(text||'{}');}
 export async function GET(req,context) { try {
  await init(); const {path}=await context.params; const route=path.join('/'); const url=new URL(req.url);
  if(route==='auth/options') return json(authOptions());
  if(route==='session') {
   const who=await identity(req); if(who) return json(who);
-  if(process.env.DEMO_MODE!=='false') {const response=json({demo:true,newSession:true});response.headers.set('Set-Cookie',demoCookie()+secure());return response;}
+  if(process.env.DEMO_MODE!=='false') {await rateLimit(req,'demo-session');const response=json({demo:true,newSession:true});response.headers.set('Set-Cookie',demoCookie()+secure());return response;}
   return json({needsLogin:true});
  }
  if(route==='webhook') {
@@ -46,17 +50,21 @@ export async function GET(req,context) { try {
  const who=await identity(req); if(!who) return json({error:'Please sign in to continue.'},401);
  const tenant=who.tenant;
  if(route==='state') {
-  if(who.demo) await seed(tenant);
-  const [list,activityResult,accountResult,linkResult,countResult]=await Promise.all([
+  if(who.demo) {await rateLimit(req,'demo-state',120,3600000);await seed(tenant);}
+  const analyticsSince=await launchBoundary(tenant);
+  const since=analyticsSince||'1970-01-01T00:00:00.000Z';
+  const [list,activityResult,accountResult,linkResult,countResult,campaignStatsResult]=await Promise.all([
    campaigns(tenant),
-   query(tenant,'SELECT * FROM activity WHERE tenant=? ORDER BY datetime(created_at) DESC LIMIT 200'),
-   who.demo?Promise.resolve({rows:[{id:'demo-account',username:'the.slow.studio',demo:true}]}):query(tenant,'SELECT id,username,expires_at,auth_type FROM accounts WHERE tenant=?'),
-   query(tenant,'SELECT campaign_id,sum(clicks) AS clicks FROM links WHERE tenant=? GROUP BY campaign_id'),
-   query(tenant,"SELECT count(*) AS comments,sum(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent FROM activity WHERE tenant=?")
+   query(tenant,'SELECT * FROM activity WHERE tenant=? AND julianday(created_at)>=julianday(?) ORDER BY julianday(created_at) DESC LIMIT 200',[since]),
+   who.demo?Promise.resolve({rows:[{id:'demo-account',username:'the.slow.studio',demo:true}]}):query(tenant,'SELECT a.id,a.username,a.expires_at,a.auth_type,b.status AS button_status,b.checked_at AS button_checked_at FROM accounts a LEFT JOIN account_button_status b ON b.tenant=a.tenant AND b.account_id=a.id WHERE a.tenant=?'),
+   query(tenant,'SELECT campaign_id,sum(clicks) AS clicks FROM links WHERE tenant=? AND id NOT IN (SELECT id FROM archived_links WHERE tenant=links.tenant) GROUP BY campaign_id'),
+   query(tenant,"SELECT sum(comments) AS comments,sum(sent) AS sent FROM (SELECT count(*) AS comments,sum(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent FROM activity WHERE tenant=? AND julianday(created_at)>=julianday(?) UNION ALL SELECT comments,sent FROM daily_stats WHERE tenant=? AND date>=date(?))",[since,tenant,since]),
+   query(tenant,"SELECT campaign_id,sum(sent) AS sent FROM (SELECT campaign_id,sum(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent FROM activity WHERE tenant=? AND julianday(created_at)>=julianday(?) GROUP BY campaign_id UNION ALL SELECT campaign_id,sent FROM daily_stats WHERE tenant=? AND date>=date(?)) GROUP BY campaign_id",[since,tenant,since])
   ]);
   const activity=activityResult.rows,accounts=accountResult.rows,links=linkResult.rows,counts=countResult.rows[0];
-  return json({campaigns:list,activity,accounts,links,counts,demo:who.demo,temporaryStorage:storageConfig().temporary,diagnostics:diagnostics(who.demo?0:accounts.length)});
+  return json({campaigns:list,activity,accounts,links,counts,campaignStats:campaignStatsResult.rows,analyticsSince,demo:who.demo,temporaryStorage:storageConfig().temporary,diagnostics:diagnostics(who.demo?0:accounts.length)});
  }
+ if(route==='workspace/launch-preview') {if(who.demo)return json({error:'Owner access required.'},403);return json(await launchPreview(tenant));}
  if(route==='instagram/connect') {
   if(who.demo) return json({error:'Sign in as the owner to connect a real account. Demo mode never accesses Instagram.'},403);
   const state=loginMode()+'.'+randomBytes(32).toString('hex');
@@ -70,6 +78,7 @@ export async function GET(req,context) { try {
   if(!cookie.startsWith(loginMode()+'.')) return json({error:'Login settings changed. Start again from Accounts.'},400);
   const accounts=await exchangeConnection(url.searchParams.get('code'));
   await db().batch(accounts.map(a=>({sql:'INSERT INTO accounts(id,tenant,username,token,expires_at,auth_type) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token,username=excluded.username,expires_at=excluded.expires_at,auth_type=excluded.auth_type',args:[a.id,tenant,a.username,encrypt(a.token),a.expiresAt,a.authType]})),'write');
+  await db().batch(accounts.map(a=>({sql:'DELETE FROM account_button_status WHERE tenant=? AND account_id=?',args:[tenant,a.id]})),'write');
   const response=NextResponse.redirect(new URL('/?view=accounts&connected=1',req.url));response.headers.set('Set-Cookie',`ahoy_oauth=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure()}`);return response;
  }
  if(route==='inquiries') {
@@ -83,13 +92,13 @@ export async function GET(req,context) { try {
   return json(await meta(`${account.id}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink&limit=25`,decrypt(account.token),{},account.auth_type));
  }
  return json({error:'This page could not be found.'},404);
- } catch(e){console.error('Ahoy request failed:',e.name);if(e.connectionDiagnostics)console.error('Ahoy Instagram connection checks:',e.connectionDiagnostics);return json({error:e.message||'Something went wrong. Please try again.',...(e.connectionDiagnostics?{diagnostics:e.connectionDiagnostics}:{})},400);} }
+ } catch(e){console.error('Ahoy request failed:',e.name);if(e.connectionDiagnostics)console.error('Ahoy Instagram connection checks:',e.connectionDiagnostics);return json({error:e.message||'Something went wrong. Please try again.',...(e.connectionDiagnostics?{diagnostics:e.connectionDiagnostics}:{})},e.status||400);} }
 export async function POST(req,context) {try {
  const {path}=await context.params;const route=path.join('/');
  if(route==='webhook')console.info('Ahoy webhook received',{signaturePresent:req.headers.has('x-hub-signature-256')});
  await init();
  if(route==='webhook') {
-  const raw=await req.text();if(raw.length>1000000) return json({error:'Event too large.'},413);
+  const raw=await readLimitedText(req,1000000);
   if(!signatureValid(raw,req.headers.get('x-hub-signature-256'),process.env.META_APP_SECRET)) {console.warn('Ahoy webhook rejected: signature check failed.');return json({error:'Signature rejected.'},403);}
   const id=createHash('sha256').update(raw).digest('hex');const payload=JSON.parse(raw);
   await db().execute({sql:'INSERT OR IGNORE INTO webhook_events(id,payload) VALUES(?,?)',args:[id,raw]});
@@ -99,7 +108,8 @@ export async function POST(req,context) {try {
   return json({received:true});
  }
  if(route==='data-deletion') {
-  const form=await req.formData();const signed=String(form.get('signed_request')||'');const [sig,encoded]=signed.split('.');
+  if(!req.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded'))return json({error:'A signed form request is required.'},415);
+  const form=new URLSearchParams(await readLimitedText(req,32768));const signed=String(form.get('signed_request')||'');const [sig,encoded]=signed.split('.');
   if(!process.env.META_APP_SECRET||!sig||!encoded) return json({error:'Signed request required.'},403);
   const expected=createHmac('sha256',process.env.META_APP_SECRET).update(encoded).digest();const actual=Buffer.from(sig,'base64url');
   if(actual.length!==expected.length||!timingSafeEqual(actual,expected)) return json({error:'Invalid signature.'},403);
@@ -110,7 +120,10 @@ export async function POST(req,context) {try {
   return json({url:(process.env.APP_URL||new URL(req.url).origin)+'/?view=deletion',confirmation_code:confirmation});
  }
  if(!sameOrigin(req)) return json({error:'Please submit this from Ahoy.'},403);
+ if(req.headers.get('content-type')?.split(';')[0].trim()!=='application/json')return json({error:'Send an application/json request.'},415);
  const b=await body(req);
+ if(!b||typeof b!=='object'||Array.isArray(b))return json({error:'A JSON object is required.'},400);
+ if(['waitlist','setup-request','auth/login'].includes(route))await rateLimit(req,'public:'+route);
  if(['waitlist','setup-request'].includes(route)) {
   if(!emailValid(b.email)) return json({error:'Please enter a valid email address.'},400);
   if(b.website) return json({ok:true});
@@ -180,13 +193,15 @@ export async function POST(req,context) {try {
   if(!who.demo) await inngest.send({id:'retry:'+randomUUID(),name:'ahoy/comment.ready',data:{id:row.id,accountId:c.accountId}});
   return json({ok:true});
  }
- if(route==='accounts/follow-buttons') {
-  if(who.demo)throw new Error('Demo buttons do not require Meta subscriptions.');
+ if(route==='workspace/prepare-launch') {
+  if(who.demo)return json({error:'Owner access required.'},403);
+  return json(await prepareLaunch(tenant,b.confirmation,b.fingerprint));
+ }
+ if(['accounts/follow-buttons','accounts/follow-buttons/check'].includes(route)) {
+  if(who.demo)throw new Error('Owner access required.');
   const account=(await query(tenant,'SELECT * FROM accounts WHERE tenant=? AND id=?',[String(b.id)])).rows[0];
   if(!account)throw new Error('Account not found.');
-  const result=await meta(`${account.id}/subscribed_apps`,decrypt(account.token),{method:'POST',body:JSON.stringify({subscribed_fields:'comments,messages,messaging_postbacks'})},account.auth_type);
-  if(result.success!==true)throw new Error('Meta did not confirm recheck-button subscriptions. CHECK replies still work.');
-  return json({message:'Account subscribed to button events. Also enable messaging_postbacks in Meta’s webhook settings. Test with a real conversation.'});
+  return json(await checkButtonStatus(tenant,account,route==='accounts/follow-buttons'));
  }
  if(route==='accounts/check') {
   if(who.demo) return json({ok:true,message:'This is a sample account. Connect your own after setup.'});
@@ -195,11 +210,11 @@ export async function POST(req,context) {try {
  }
  if(route==='accounts/disconnect') {
   if(who.demo) throw new Error('This is a sample account. Your Instagram is not connected.');
-  await db().batch([{sql:'DELETE FROM accounts WHERE tenant=? AND id=?',args:[tenant,b.id]},{sql:"UPDATE campaigns SET data=json_set(data,'$.active',json('false')) WHERE tenant=? AND json_extract(data,'$.accountId')=?",args:[tenant,b.id]}],'write');return json({ok:true});
+  await db().batch([{sql:'DELETE FROM account_button_status WHERE tenant=? AND account_id=?',args:[tenant,b.id]},{sql:'DELETE FROM accounts WHERE tenant=? AND id=?',args:[tenant,b.id]},{sql:"UPDATE campaigns SET data=json_set(data,'$.active',json('false')) WHERE tenant=? AND json_extract(data,'$.accountId')=?",args:[tenant,b.id]}],'write');return json({ok:true});
  }
  if(route==='workspace/delete') {
   if(b.confirmation!=='DELETE') throw new Error('Type DELETE to remove this workspace’s data.');
-  await db().batch(['campaigns','activity','accounts','links','opt_outs','daily_stats','follow_requests'].map(table=>({sql:`DELETE FROM ${table} WHERE tenant=?`,args:[tenant]})),'write');return json({ok:true});
+  await db().batch(['campaigns','activity','accounts','links','opt_outs','daily_stats','follow_requests','workspace_settings','archived_links','account_button_status'].map(table=>({sql:`DELETE FROM ${table} WHERE tenant=?`,args:[tenant]})),'write');return json({ok:true});
  }
  return json({error:'Action not found.'},404);
- } catch(e) {console.error('Ahoy action failed:',e.name);return json({error:e.message||'Something went wrong. Please try again.'},400);} }
+ } catch(e) {console.error('Ahoy action failed:',e.name);return json({error:e.message||'Something went wrong. Please try again.'},e.status||400);} }

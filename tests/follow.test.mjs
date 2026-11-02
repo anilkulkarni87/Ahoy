@@ -93,6 +93,22 @@ test('a fresh CHECK recovers an interrupted read-only verification, without repl
  let sends=0;global.fetch=async(url,opts)=>{if(opts.method==='POST')sends++;return Response.json(opts.method==='POST'?{message_id:'recovered'}:{is_user_follow_business:true});};
  assert.equal((await checkFollow(event)).status,'sent');assert.equal(sends,1);
 });
+test('separate taps on one button get distinct event IDs while webhook redelivery stays idempotent',async()=>{
+ await db().execute({sql:'UPDATE campaigns SET data=? WHERE id=?',args:[JSON.stringify(campaign),'gated']});
+ const r=await request();await consent(r);
+ const firstTime=Date.now();
+ const tap=time=>({sender:{id:'messaging-user'},timestamp:time,postback:{mid:'same-button-message',payload:'ahoy:follow:'+r.id}});
+ const [first]=await followChecks('ig',tap(firstTime),firstTime);
+ const [duplicate]=await followChecks('ig',tap(firstTime),firstTime);
+ assert.equal(first.eventId,duplicate.eventId);
+ global.fetch=async(url,opts)=>Response.json(opts.method==='POST'?{message_id:'reminder'}:{is_user_follow_business:false});
+ assert.equal((await checkFollow(first,firstTime)).status,'awaiting-follow');
+ let calls=0;global.fetch=async(url,opts)=>{calls++;return Response.json(opts.method==='POST'?{message_id:'resource'}:{is_user_follow_business:true});};
+ await checkFollow(duplicate,firstTime+31000);assert.equal(calls,0,'redelivery must not run verification again');
+ const [later]=await followChecks('ig',tap(firstTime+31000),firstTime+31000);
+ assert.notEqual(first.eventId,later.eventId);
+ assert.equal((await checkFollow(later,firstTime+31000)).status,'sent');assert.equal(calls,2);
+});
 test('follow requests keep resource snapshots and disappear with account data deletion',async()=>{
  const {deleteAccountData}=await import('../lib/retention.mjs');
  await db().execute({sql:'UPDATE campaigns SET data=? WHERE id=?',args:[JSON.stringify(campaign),'gated']});

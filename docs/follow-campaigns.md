@@ -31,7 +31,9 @@ The CHECK text path uses the existing `messages` webhook subscription. Native re
 
 1. Enable `messaging_postbacks` on the Instagram object in Meta’s webhook settings, alongside `comments` and `messages`.
 2. In Ahoy → Instagram accounts, select **Enable follow recheck buttons** for the connected account. This updates its subscriptions without requiring a new OAuth connection.
-3. Test the buttons in a real conversation. If a template cannot be sent, Activity explains that CHECK text replies remain available.
+3. Wait at least 30 seconds after the previous check, then test the buttons in a real conversation. If a template cannot be sent, Activity explains that CHECK text replies remain available.
+
+If a button renders but tapping it produces no response, check both subscriptions above first. Rendering a button does not enable its click webhook. In Vercel Runtime Logs for `/api/inngest`, `Ahoy follow button received` confirms a follow-button event reached the ingestion worker; `eligibleChecks: 1` means it matched a pending request within an existing messaging window. No such log after a tap points to delivery/subscription or ingestion issues, not proof that the follow was checked. A value of zero means no eligible pending request was found; a completed request or expired messaging window can cause this.
 
 Ordinary account connection keeps its existing subscriptions. This feature does not change working OAuth settings, app IDs or configuration IDs.
 
@@ -49,7 +51,7 @@ The demo simulator lets you test both “not following” and “following” ou
 
 ## Verification limits and sources
 
-The implementation is covered by mocked Meta API tests and local UI/API checks. Verified follow lookup and recheck buttons still require the controlled test above with your particular Unified Login configuration. They are not claimed to work on every token or account. Unsupported verification fails closed rather than becoming a self-confirmation gate.
+The implementation is covered by mocked Meta API tests and local UI/API checks. The owner has observed both a successful verified resource release and a false follow check with buttons on one Unified Login connection. Button-click delivery still needs the two subscriptions and a controlled live test. Other installations must repeat the acceptance test above. They are not claimed to work on every token or account. Unsupported verification fails closed rather than becoming a self-confirmation gate.
 
 Meta documents the follow-status field and messaging consent in the [Instagram User Profile API](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/user-profile), and URL/postback templates in [Button templates](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/button-template). Those examples use Instagram Login; Unified Login's specific capability must be established with the actual connection. Also follow [private-reply restrictions](https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/private-replies).
 

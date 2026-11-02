@@ -170,4 +170,4 @@ The code uses the MIT licence. Meta approval is not claimed. The supplied produc
 
 ## Dependency review
 
-The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The latest code checks passed the build and 71 app tests. Build and test success do not replace a dependency/security review.
+The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The latest code checks passed the build and 72 app tests. Build and test success do not replace a dependency/security review.

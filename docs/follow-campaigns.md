@@ -30,7 +30,7 @@ Unknown resource-send outcomes are not automatically retried. Inspect Instagram 
 The CHECK text path uses the existing `messages` webhook subscription. Native recheck buttons additionally need `messaging_postbacks`:
 
 1. Enable `messaging_postbacks` on the Instagram object in Meta’s webhook settings, alongside `comments` and `messages`.
-2. In Ahoy → Instagram accounts, select **Enable follow recheck buttons** for the connected account. This updates its subscriptions without requiring a new OAuth connection.
+2. In Ahoy → Instagram accounts, open the account’s **Follow buttons** section and select **Enable follow buttons**. This is account-wide; every follow-required campaign on that account uses the same subscription. This updates its subscriptions without requiring a new OAuth connection.
 3. Wait at least 30 seconds after the previous check, then test the buttons in a real conversation. If a template cannot be sent, Activity explains that CHECK text replies remain available.
 
 If a button renders but tapping it produces no response, check both subscriptions above first. Rendering a button does not enable its click webhook. In Vercel Runtime Logs for `/api/inngest`, `Ahoy follow button received` confirms a follow-button event reached the ingestion worker; `eligibleChecks: 1` means it matched a pending request within an existing messaging window. No such log after a tap points to delivery/subscription or ingestion issues, not proof that the follow was checked. A value of zero means no eligible pending request was found; a completed request or expired messaging window can cause this.

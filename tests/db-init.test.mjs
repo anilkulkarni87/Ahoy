@@ -12,7 +12,7 @@ client.execute=async statement=>{
 };
 test('initialization retries a failed migration and shares completed schema checks across calls',async()=>{
  await assert.rejects(()=>init(),/temporary schema failure/);
- await Promise.all([init(),init(),init()]);assert.equal(schemaReads,3);
+ await Promise.all([init(),init(),init()]);assert.equal(schemaReads,4);
  await Promise.all(Array.from({length:10},()=>query('owner','SELECT * FROM campaigns WHERE tenant=?')));
- assert.equal(schemaReads,3,'warm queries must not re-inspect schema');
+ assert.equal(schemaReads,4,'warm queries must not re-inspect schema');
 });

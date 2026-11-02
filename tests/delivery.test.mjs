@@ -22,3 +22,10 @@ test('Unified private and public replies use the persisted Facebook Graph connec
  const r=await processComment('owner',input('unified'));assert.equal((await deliver(r.id)).sent,true);
  assert.equal(calls.length,2);assert.ok(calls.every(u=>u.host==='graph.facebook.com'));assert.ok(calls[0].pathname.endsWith('/ig/messages'));assert.ok(calls[1].pathname.endsWith('/unified/replies'));
 });
+test('a late public reply failure cannot undo a completed follow resource delivery',async()=>{
+ const campaign=JSON.parse((await db().execute("SELECT data FROM campaigns WHERE id='campaign'")).rows[0].data);
+ await db().execute({sql:'UPDATE campaigns SET data=? WHERE id=?',args:[JSON.stringify({...campaign,deliveryMode:'after-follow',publicReply:'Sent!'}),'campaign']});
+ const r=await processComment('owner',input('public-race'));
+ global.fetch=async url=>{if(new URL(url).pathname.endsWith('/public-race/replies')){await db().execute({sql:"UPDATE activity SET status='sent',reason='Follow verified; resource accepted by Meta.' WHERE id=?",args:[r.id]});return Response.json({error:{code:100}},{status:400});}return Response.json({message_id:'request',recipient_id:'recipient'});};
+ await deliver(r.id);const row=(await db().execute({sql:'SELECT status,reason FROM activity WHERE id=?',args:[r.id]})).rows[0];assert.equal(row.status,'sent');assert.match(row.reason,/Follow verified/);
+});

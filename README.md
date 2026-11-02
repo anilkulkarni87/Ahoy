@@ -16,6 +16,7 @@ An MIT-licensed, self-hostable Instagram comment-to-DM app. Start with the demo,
 | Keep my test data between visits | [Add Turso after the demo works](docs/vercel-demo.md#keep-your-test-data-optional) |
 | Run it on my computer | [Local demo](#run-it-on-your-computer) |
 | Connect a real Instagram account | [Business vs Creator and Meta setup](docs/instagram-setup.md) |
+| Understand connection health and campaign funnels | [Health and analytics guide](docs/health-and-analytics.md) |
 | Prepare for launch and review security limits | [Launch controls and security notes](SECURITY.md) |
 | Configure real hosting, owner access and workflows | [Self-hosting reference](docs/operations.md) |
 

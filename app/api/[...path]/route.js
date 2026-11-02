@@ -1,3 +1,5 @@
+import { connectionHealth,conversionReport } from '../../../lib/insights.mjs';
+import { activityTimeline,observeWebhook,recordStage,outcomeStatement,signal } from '../../../lib/observability.mjs';
 import { launchPreview,prepareLaunch,launchBoundary } from '../../../lib/launch.mjs';
 import { checkButtonStatus } from '../../../lib/button-status.mjs';
 import { rateLimit } from '../../../lib/rate-limit.mjs';
@@ -64,6 +66,9 @@ export async function GET(req,context) { try {
   const activity=activityResult.rows,accounts=accountResult.rows,links=linkResult.rows,counts=countResult.rows[0];
   return json({campaigns:list,activity,accounts,links,counts,campaignStats:campaignStatsResult.rows,analyticsSince,demo:who.demo,temporaryStorage:storageConfig().temporary,diagnostics:diagnostics(who.demo?0:accounts.length)});
  }
+ if(route==='health')return json(await connectionHealth(tenant,{demo:who.demo}));
+ if(route==='reports')return json(await conversionReport(tenant,{period:url.searchParams.get('period')||'7',campaignId:url.searchParams.get('campaignId')||''}));
+ if(route==='activity/timeline') {const result=await activityTimeline(tenant,url.searchParams.get('id')||'');return result?json(result):json({error:'Activity not found.'},404);}
  if(route==='workspace/launch-preview') {if(who.demo)return json({error:'Owner access required.'},403);return json(await launchPreview(tenant));}
  if(route==='instagram/connect') {
   if(who.demo) return json({error:'Sign in as the owner to connect a real account. Demo mode never accesses Instagram.'},403);
@@ -78,7 +83,7 @@ export async function GET(req,context) { try {
   if(!cookie.startsWith(loginMode()+'.')) return json({error:'Login settings changed. Start again from Accounts.'},400);
   const accounts=await exchangeConnection(url.searchParams.get('code'));
   await db().batch(accounts.map(a=>({sql:'INSERT INTO accounts(id,tenant,username,token,expires_at,auth_type) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token,username=excluded.username,expires_at=excluded.expires_at,auth_type=excluded.auth_type',args:[a.id,tenant,a.username,encrypt(a.token),a.expiresAt,a.authType]})),'write');
-  await db().batch(accounts.map(a=>({sql:'DELETE FROM account_button_status WHERE tenant=? AND account_id=?',args:[tenant,a.id]})),'write');
+  await db().batch(accounts.flatMap(a=>[{sql:'DELETE FROM account_button_status WHERE tenant=? AND account_id=?',args:[tenant,a.id]},{sql:'DELETE FROM connection_signals WHERE tenant=? AND account_id=?',args:[tenant,a.id]}]),'write');
   const response=NextResponse.redirect(new URL('/?view=accounts&connected=1',req.url));response.headers.set('Set-Cookie',`ahoy_oauth=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure()}`);return response;
  }
  if(route==='inquiries') {
@@ -102,6 +107,7 @@ export async function POST(req,context) {try {
   if(!signatureValid(raw,req.headers.get('x-hub-signature-256'),process.env.META_APP_SECRET)) {console.warn('Ahoy webhook rejected: signature check failed.');return json({error:'Signature rejected.'},403);}
   const id=createHash('sha256').update(raw).digest('hex');const payload=JSON.parse(raw);
   await db().execute({sql:'INSERT OR IGNORE INTO webhook_events(id,payload) VALUES(?,?)',args:[id,raw]});
+  await observeWebhook(payload);
   console.info('Ahoy webhook saved',{entryCount:Array.isArray(payload.entry)?payload.entry.length:0});
   // Persist before acknowledging; reconciliation recovers dispatch failures.
   try {await inngest.send({id:'webhook:'+id,name:'ahoy/webhook.received',data:{id}});console.info('Ahoy webhook handed to Inngest');} catch {console.error('Ahoy webhook saved but Inngest dispatch failed; reconciliation must recover it.');}
@@ -181,6 +187,8 @@ export async function POST(req,context) {try {
   const row=(await query(tenant,`SELECT a.id,f.resource_message FROM activity a JOIN follow_requests f ON f.activity_id=a.id WHERE a.tenant=? AND a.id=? AND a.status IN ('awaiting-follow','verification-unavailable')`,[String(b.id)])).rows[0];
   if(!row)throw new Error('No pending demo follow request found.');
   await db().execute({sql:'UPDATE activity SET status=?,reason=?,message=CASE WHEN ? THEN ? ELSE message END WHERE tenant=? AND id=?',args:[b.following?'sent':'awaiting-follow',b.following?'Demo follow verified; resource simulated. No Instagram message was sent.':'Demo: not following yet. Resource withheld.',b.following?1:0,row.resource_message,tenant,row.id]});
+  for(const stage of ['check',...(b.following?['verified','resource']:['notFollowing'])])await recordStage(tenant,row.id,stage);
+  await db().execute(outcomeStatement(tenant,row.id,b.following?'sent':'awaiting-follow'));
   return json((await query(tenant,'SELECT * FROM activity WHERE tenant=? AND id=?',[row.id])).rows[0]);
  }
  if(route==='activity/retry') {
@@ -190,6 +198,7 @@ export async function POST(req,context) {try {
   const c=(await campaigns(tenant)).find(c=>c.id===row.campaign_id);
   if(!c) throw new Error('The campaign no longer exists.');
   await db().execute({sql:"UPDATE activity SET status=?,reason=? WHERE tenant=? AND id=?",args:[who.demo?'sent':'queued',who.demo?'Demo retry completed.':'Retry requested by owner.',tenant,row.id]});
+  await db().execute(outcomeStatement(tenant,row.id,who.demo?'sent':'queued'));
   if(!who.demo) await inngest.send({id:'retry:'+randomUUID(),name:'ahoy/comment.ready',data:{id:row.id,accountId:c.accountId}});
   return json({ok:true});
  }
@@ -206,15 +215,16 @@ export async function POST(req,context) {try {
  if(route==='accounts/check') {
   if(who.demo) return json({ok:true,message:'This is a sample account. Connect your own after setup.'});
   const account=(await query(tenant,'SELECT * FROM accounts WHERE tenant=? AND id=?',[b.id])).rows[0];if(!account) throw new Error('Account not found.');
-  const result=await meta(`${account.id}?fields=id,username`,decrypt(account.token),{},account.auth_type);return json({ok:true,message:'Connected as @'+result.username+'. Token is valid; message permissions still require a live test.'});
+  try {const result=await meta(`${account.id}?fields=id,username`,decrypt(account.token),{},account.auth_type);await signal(tenant,account.id,'access','ok');return json({ok:true,message:'Connected as @'+result.username+'. Access check passed; message permissions still require a live test.'});}
+  catch {await signal(tenant,account.id,'access','failed');return json({error:'The access check could not complete. Check Meta access or retry if the connection was interrupted.'},400);}
  }
  if(route==='accounts/disconnect') {
   if(who.demo) throw new Error('This is a sample account. Your Instagram is not connected.');
-  await db().batch([{sql:'DELETE FROM account_button_status WHERE tenant=? AND account_id=?',args:[tenant,b.id]},{sql:'DELETE FROM accounts WHERE tenant=? AND id=?',args:[tenant,b.id]},{sql:"UPDATE campaigns SET data=json_set(data,'$.active',json('false')) WHERE tenant=? AND json_extract(data,'$.accountId')=?",args:[tenant,b.id]}],'write');return json({ok:true});
+  await db().batch([{sql:'DELETE FROM connection_signals WHERE tenant=? AND account_id=?',args:[tenant,b.id]},{sql:'DELETE FROM account_button_status WHERE tenant=? AND account_id=?',args:[tenant,b.id]},{sql:'DELETE FROM accounts WHERE tenant=? AND id=?',args:[tenant,b.id]},{sql:"UPDATE campaigns SET data=json_set(data,'$.active',json('false')) WHERE tenant=? AND json_extract(data,'$.accountId')=?",args:[tenant,b.id]}],'write');return json({ok:true});
  }
  if(route==='workspace/delete') {
   if(b.confirmation!=='DELETE') throw new Error('Type DELETE to remove this workspace’s data.');
-  await db().batch(['campaigns','activity','accounts','links','opt_outs','daily_stats','follow_requests','workspace_settings','archived_links','account_button_status'].map(table=>({sql:`DELETE FROM ${table} WHERE tenant=?`,args:[tenant]})),'write');return json({ok:true});
+  await db().batch(['campaigns','activity','accounts','links','opt_outs','daily_stats','follow_requests','workspace_settings','archived_links','account_button_status','delivery_metrics','activity_events','connection_signals'].map(table=>({sql:`DELETE FROM ${table} WHERE tenant=?`,args:[tenant]})),'write');return json({ok:true});
  }
  return json({error:'Action not found.'},404);
  } catch(e) {console.error('Ahoy action failed:',e.name);return json({error:e.message||'Something went wrong. Please try again.'},e.status||400);} }

@@ -44,3 +44,7 @@ Meta's app-level webhook setting is separate; enable `messaging_postbacks` there
 ## Performance scope
 
 Database initialization is reused; independent state reads run concurrently. Added indexes support pending deliveries, webhook recovery, campaign status and chronological activity. Campaign delivery counts include rollups rather than just the latest 200 visible records. No production latency/load-test claims are made. Large workspaces will eventually need paginated campaigns, incremental counters and a measured reconciliation budget.
+
+## Health and analytics data
+
+Connection signals and diagnostic exports contain allowlisted statuses and timestamps; exports exclude customer content and account identifiers. Reporting facts retain hashed comment identities for up to 90 days, subject to scheduled maintenance, while detailed timelines follow 30-day activity retention. These identifiers are pseudonymous, not anonymous. Account/workspace erasure includes the new tables. See [the guide](docs/health-and-analytics.md).

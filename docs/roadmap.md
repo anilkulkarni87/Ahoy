@@ -1,6 +1,6 @@
 # Ahoy value-add roadmap
 
-Proposed work, not implemented features. The aim is to make it easy for a creator to offer the right resource, understand results and recover from problems without technical help. Keep the core app usable without AI or an additional paid service.
+Connection health and the first conversion-funnel release are implemented; see [the user guide](health-and-analytics.md). Live acceptance after deployment remains required. Other items below are proposals. The aim is to make it easy for a creator to offer the right resource, understand results and recover from problems without technical help. Keep the core app usable without AI or an additional paid service.
 
 ## Release gate: prove the current version in production
 
@@ -10,7 +10,7 @@ Recheck the unresolved dependency advisories in SECURITY.md. Investigate support
 
 Acceptance: both live flows verified, dependency risks explicitly resolved or assessed, and a recorded performance baseline. This is a release-hardening step, not a new product feature.
 
-## 1. Connection health and guided recovery
+## 1. Connection health and guided recovery — implemented
 
 **Value:** answer “Why did this person not receive a DM?” from inside Ahoy.
 
@@ -22,7 +22,7 @@ Acceptance:
 - Diagnostics contain no token, authorization code, raw webhook body or customer message.
 - Checks are manual or cached; rendering a dashboard does not fan out into repeated Meta calls.
 
-## 2. Campaign conversion funnel
+## 2. Campaign conversion funnel — implemented
 
 **Value:** show whether asking for a follow helps the creator or causes people to drop off.
 
@@ -88,4 +88,4 @@ Acceptance:
 4. Groq editor assistance.
 5. Interactive resource chooser, after validating Meta support.
 
-The strongest next product increment is **connection health plus the conversion funnel**: it builds trust and reveals what to improve. The quickest creator-facing convenience is **duplicate campaign, starting paused**. Defer unrestricted AI replies, unsolicited reminders and multi-step automation until eligibility, quality and operational behavior are established.
+After live acceptance of connection health and the conversion funnel, the next proposed increment is the resource library and reusable campaigns. The quickest creator-facing convenience is **duplicate campaign, starting paused**. Defer unrestricted AI replies, unsolicited reminders and multi-step automation until eligibility, quality and operational behavior are established.

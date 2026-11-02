@@ -7,21 +7,21 @@ Existing campaigns still send immediately. No new secrets, AI provider or email 
 In **Write your message → When should we send the resource?** choose:
 
 - **Send immediately:** sends the resource after a matching comment. Optionally enable **Include an optional follow invitation** to append your connected profile link. It does not hold the resource or verify a follow.
-- **After following:** sends a follow request and profile link first. Ahoy adds an instruction such as `Reply CHECK A1B2C3D4`. The resource message and link remain withheld until the recipient replies and Meta explicitly returns `is_user_follow_business: true`.
+- **After following:** sends a follow request and profile link first. Ahoy adds a **Check follow** quick-reply button and your profile link. No request code needs to be typed. The resource message and link remain withheld until the recipient replies and Meta explicitly returns `is_user_follow_business: true`.
 
-The two preview tabs show the request and resource separately. The request code in the preview is illustrative; each real request gets its own code. Use the code when several requests are pending for the same person. A plain `CHECK` works only when there is exactly one pending request.
+The two preview tabs show the request and resource separately. The button carries the request ID in a hidden payload, so it selects the right resource even if several requests are pending. A plain `CHECK` text reply remains a fallback when exactly one request is pending. Old messages with CHECK codes continue working.
 
-The initial private reply uses text and a clickable profile URL. It does not assume native button templates work in a comment-based private reply. It cannot automatically follow on behalf of the recipient.
+The initial private reply uses text, a clickable profile URL and a Check follow quick reply. A quick reply posts its title as the recipient’s actual message; it is different from a URL click or a postback-only button. It cannot automatically follow on behalf of the recipient. Meta does not display quick replies on desktop, so CHECK text remains a fallback. If Meta explicitly rejects the initial quick-reply request with a validation error, Ahoy attempts one plain-text request containing a CHECK code. It never attempts this fallback after a timeout, unknown send outcome or server error.
 
 ## Reply and recheck behavior
 
-A comment alone does not establish profile-access consent. The person must first send the CHECK text reply in Instagram. Ahoy uses the messaging recipient ID returned by Meta, retains the requested resource as a snapshot and checks follow status using the account's persisted login type.
+A comment alone does not establish profile-access consent. The person must tap the quick reply or send a CHECK text reply in Instagram. Ahoy uses the messaging recipient ID returned by Meta, retains the requested resource as a snapshot and checks follow status using the account's persisted login type.
 
 - **True:** send the stored resource once, then mark Activity **Sent**.
-- **False:** keep Activity **Awaiting follow**, withhold the resource and try sending **Visit profile** / **Check follow** buttons. The person can also reply with the same CHECK code again.
+- **False:** keep Activity **Awaiting follow**, withhold the resource and try sending **Visit profile** / **Check follow** buttons. The person can also reply CHECK when only one request is pending; old coded replies remain supported.
 - **Missing field, unsupported access or API failure:** show **Verification unavailable** and withhold the resource. Do not interpret this as “not following” or as success.
 
-Repeated checks have a 30-second cooldown. If a new click arrives during the cooldown, the delivery workflow waits durably and rechecks automatically; the recipient normally does not need to click again. Several competing checks can postpone this further; Activity explains when another tap is needed. A recheck button only works within a messaging window already established by the inbound text. Ahoy conservatively uses 23 hours; after that the person must send a new CHECK text reply. No background polling or automatic release based on follower-count changes occurs.
+Repeated checks have a 30-second cooldown. If a new click arrives during the cooldown, the delivery workflow waits durably and rechecks automatically; the recipient normally does not need to click again. Several competing checks can postpone this further; Activity explains when another tap is needed. A postback recheck button only works within a messaging window already established by an inbound quick reply or text message. Ahoy conservatively uses 23 hours; after that the person must send a new CHECK text reply. No background polling or automatic release based on follower-count changes occurs.
 
 Unknown resource-send outcomes are not automatically retried. Inspect Instagram before creating a new request. Paused/deleted campaigns, disconnected accounts, opt-outs and disabled live sends prevent release.
 
@@ -41,9 +41,9 @@ Ordinary account connection keeps its existing subscriptions. This feature does 
 
 1. Deploy and resync the existing Ahoy app in Inngest. There are still four functions; follow checks use the existing per-account delivery queue.
 2. Create one **After following** campaign on a test post. Use a recipient account that does not already follow the connected account.
-3. Comment the keyword. Confirm only the request arrives: no resource text, URL or tracking link.
-4. Reply with its CHECK code before following. Confirm the resource stays withheld. Check Activity and any recheck buttons.
-5. Follow, then reply with the code again after 30 seconds. Confirm Meta verification succeeds and the resource arrives once.
+3. Comment the keyword. Confirm the request includes Check follow and the profile link, with no resource text, URL or tracking link.
+4. Tap Check follow before following (use mobile Instagram). Confirm the resource stays withheld. Check Activity and any recheck buttons.
+5. Follow, then tap the recheck button again. Early clicks wait out the cooldown automatically. Confirm Meta verification succeeds and the resource arrives once.
 6. Repeat the CHECK reply and replay a duplicate event: neither should resend the resource.
 7. Test STOP before release, a paused campaign and an unavailable follow-status lookup. All must withhold the resource.
 
@@ -51,9 +51,9 @@ The demo simulator lets you test both “not following” and “following” ou
 
 ## Verification limits and sources
 
-The implementation is covered by mocked Meta API tests and local UI/API checks. The owner has observed both a successful verified resource release and a false follow check with buttons on one Unified Login connection. Button-click delivery still needs the two subscriptions and a controlled live test. Other installations must repeat the acceptance test above. They are not claimed to work on every token or account. Unsupported verification fails closed rather than becoming a self-confirmation gate.
+The implementation is covered by mocked Meta API tests and local UI/API checks. The owner has observed both a successful verified resource release and a false follow check with buttons on one Unified Login connection. Button-click delivery still needs the two subscriptions and a controlled live test. Other installations must repeat the acceptance test above. The new initial quick-reply private reply still needs a controlled live test with the actual connection. It is not claimed to work on every token or account. Unsupported verification fails closed rather than becoming a self-confirmation gate.
 
-Meta documents the follow-status field and messaging consent in the [Instagram User Profile API](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/user-profile), and URL/postback templates in [Button templates](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/button-template). Those examples use Instagram Login; Unified Login's specific capability must be established with the actual connection. Also follow [private-reply restrictions](https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/private-replies).
+Meta documents the follow-status field and messaging consent in the [Instagram User Profile API](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/user-profile), and URL/postback templates in [Button templates](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/button-template). Those examples use Instagram Login; Unified Login's specific capability must be established with the actual connection. See [Meta quick replies](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/quick-replies) for the inbound-message behavior and desktop limitation. Also follow [private-reply restrictions](https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/private-replies).
 
 ## Performance changes in this release
 

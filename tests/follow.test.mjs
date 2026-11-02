@@ -18,7 +18,7 @@ async function request() {
  const sends=[];
  global.fetch=async(url,options)=>{sends.push(JSON.parse(options.body));return Response.json({recipient_id:'messaging-user',message_id:'private-'+seq});};
  assert.equal((await deliver(r.id)).awaitingFollow,true);
- assert.equal(sends.length,1);assert.ok(!JSON.stringify(sends).includes('/secret'));assert.match(sends[0].message.text,/Reply CHECK/i);
+ assert.equal(sends.length,1);assert.ok(!JSON.stringify(sends).includes('/secret'));assert.match(sends[0].message.text,/tap Check follow/i);assert.ok(!sends[0].message.text.includes(r.id.slice(0,8).toUpperCase()));assert.deepEqual(sends[0].message.quick_replies,[{content_type:'text',title:'Check follow',payload:'ahoy:follow:'+r.id}]);
  const row=(await db().execute({sql:'SELECT * FROM follow_requests WHERE activity_id=?',args:[r.id]})).rows[0];assert.equal(row.user_id,'messaging-user');
  return r;
 }
@@ -108,6 +108,33 @@ test('separate taps on one button get distinct event IDs while webhook redeliver
  const [later]=await followChecks('ig',tap(firstTime+31000),firstTime+31000);
  assert.notEqual(first.eventId,later.eventId);
  assert.equal((await checkFollow(later,firstTime+31000)).status,'sent');assert.equal(calls,2);
+});
+test('initial quick reply establishes real-message consent and selects the resource without a typed code',async()=>{
+ await db().execute({sql:'UPDATE campaigns SET data=? WHERE id=?',args:[JSON.stringify(campaign),'gated']});
+ const r=await request();await request();
+ const [event]=await followChecks('ig',inbound(r,{message:{mid:'first-quick-reply',text:'Check follow',quick_reply:{payload:'ahoy:follow:'+r.id}}}));
+ assert.equal(event.id,r.id);assert.equal(event.eventId,'first-quick-reply');
+ let sends=0;global.fetch=async(url,opts)=>{if(opts.method==='POST')sends++;return Response.json(opts.method==='POST'?{message_id:'unlocked'}:{is_user_follow_business:true});};
+ assert.equal((await checkFollow(event)).status,'sent');assert.equal(sends,1);
+});
+test('quick replies cannot establish consent without a matching sender, payload, message ID and message text',async()=>{
+ const r=await request();
+ const quick={mid:'quick',text:'Check follow',quick_reply:{payload:'ahoy:follow:'+r.id}};
+ for(const item of [inbound(r,{sender:{id:'wrong'},message:quick}),inbound(r,{message:{...quick,mid:undefined}}),inbound(r,{message:{...quick,text:undefined}}),inbound(r,{message:{...quick,quick_reply:{payload:'unrelated'}}})])assert.deepEqual(await followChecks('ig',item),[]);
+ const consentAt=(await db().execute({sql:'SELECT consent_at FROM follow_requests WHERE activity_id=?',args:[r.id]})).rows[0].consent_at;assert.equal(consentAt,0);
+});
+test('explicit Meta validation rejection falls back once to text with a code and withholds the resource',async()=>{
+ const r=await processComment('owner',{commentId:'format-rejected',username:'maya',userId:'actor',text:'GUIDE',accountId:'ig'});
+ const messages=[];global.fetch=async(url,opts)=>{messages.push(JSON.parse(opts.body).message);return messages.length===1?Response.json({error:{code:100}},{status:400}):Response.json({recipient_id:'messaging-user',message_id:'text-fallback'});};
+ assert.equal((await deliver(r.id)).awaitingFollow,true);assert.equal(messages.length,2);assert.equal(messages[1].quick_replies,undefined);assert.match(messages[1].text,new RegExp('CHECK '+r.id.slice(0,8).toUpperCase()));assert.ok(!JSON.stringify(messages).includes('/secret'));assert.match((await state(r)).reason,/rejected the quick-reply format/);
+ await deliver(r.id);assert.equal(messages.length,2);
+});
+test('unknown initial quick-reply outcome and server errors do not attempt another private reply',async()=>{
+ for(const scenario of ['timeout','server-error']) {
+  const r=await processComment('owner',{commentId:scenario+'-initial',username:'maya',userId:'actor',text:'GUIDE',accountId:'ig'});let calls=0;
+  global.fetch=async()=>{calls++;if(scenario==='timeout')throw Error('timeout');return Response.json({error:{code:2}},{status:500});};
+  assert.equal((await deliver(r.id)).status,'failed');assert.equal(calls,1);await deliver(r.id);assert.equal(calls,1);
+ }
 });
 test('follow requests keep resource snapshots and disappear with account data deletion',async()=>{
  const {deleteAccountData}=await import('../lib/retention.mjs');

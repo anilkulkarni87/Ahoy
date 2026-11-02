@@ -118,7 +118,7 @@ Unified tokens are not sent to Instagram’s refresh endpoint. Their lifetime de
 
 Use **Check connection** and complete a real comment-to-DM test. Unit tests and setup checks do not prove Meta approval, webhook delivery or real messaging permissions.
 
-The requested behavior is one private reply to a requested comment. No cold messaging, scraping or password-based Instagram login exists. Delayed sends may expire under Meta’s messaging rules. Campaigns can optionally require a verified follow. The first private reply asks for a CHECK text reply; profile access and subsequent delivery use that inbound messaging window. A tap alone is not treated as consent. See [follow campaigns](follow-campaigns.md) for setup and live acceptance limits.
+The requested behavior is one private reply to a requested comment. No cold messaging, scraping or password-based Instagram login exists. Delayed sends may expire under Meta’s messaging rules. Campaigns can optionally require a verified follow. The first private reply offers a Check follow quick reply (with CHECK text as a fallback); profile access and subsequent delivery use that inbound messaging window. A profile URL click does not establish consent; the quick reply arrives as an actual message. See [follow campaigns](follow-campaigns.md) for setup and live acceptance limits.
 
 ## How it works
 
@@ -170,4 +170,4 @@ The code uses the MIT licence. Meta approval is not claimed. The supplied produc
 
 ## Dependency review
 
-The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The latest code checks passed the build and 74 app tests. Build and test success do not replace a dependency/security review.
+The final build uses Next.js 16.4.3 and Inngest 4.26.2. `npm audit` still reports 7 transitive advisories (5 moderate, 2 high), primarily Zod and glob-related dependencies pulled in by the current Inngest SDK. Compatible automatic fixes did not remove them; unsafe cross-major overrides were not applied. Review these before public production deployment. The latest code checks passed the build and 78 app tests. Build and test success do not replace a dependency/security review.

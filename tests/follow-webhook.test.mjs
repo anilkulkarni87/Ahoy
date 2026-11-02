@@ -14,10 +14,10 @@ await db().execute({sql:'INSERT INTO campaigns VALUES(?,?,?,CURRENT_TIMESTAMP)',
 await db().execute({sql:'INSERT INTO accounts(id,tenant,username,token,auth_type) VALUES(?,?,?,?,?)',args:['ig','owner','studio',encrypt('test-token'),'unified']});
 const events=[];inngest.send=async e=>{events.push(e);return {ids:[e.id]};};
 const input=id=>({commentId:id,username:'maya',userId:'actor',text:'GUIDE',accountId:'ig'});
-test('a message webhook enqueues a scoped verification in the existing delivery queue',async()=>{
+test('an initial quick-reply webhook establishes consent and enqueues verification in the existing delivery queue',async()=>{
  const r=await processComment('owner',input('comment'));
  global.fetch=async()=>Response.json({recipient_id:'recipient',message_id:'request'});await deliver(r.id);
- const item={sender:{id:'recipient'},timestamp:Date.now(),message:{text:'CHECK '+r.id.slice(0,8),mid:'msg-1'}};
+ const item={sender:{id:'recipient'},timestamp:Date.now(),message:{text:'Check follow',mid:'msg-1',quick_reply:{payload:'ahoy:follow:'+r.id}}};
  await db().execute("INSERT INTO webhook_events(id,payload) VALUES('webhook','{}')");
  await dispatchEvent('webhook',{entry:[{id:'ig',messaging:[item]}]});
  assert.equal(events.length,1);assert.equal(events[0].name,'ahoy/comment.ready');assert.equal(events[0].data.phase,'follow-check');assert.equal(events[0].data.accountId,'ig');assert.equal(events[0].id,'follow:ig:msg-1');assert.equal((await db().execute("SELECT dispatched FROM webhook_events WHERE id='webhook'")).rows[0].dispatched,1);

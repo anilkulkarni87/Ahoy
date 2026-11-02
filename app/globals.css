@@ -27,3 +27,5 @@
 @media(max-width:700px){.modal .builder-preview{display:block;padding:24px}.modal .phone-frame{max-width:100%;margin:0 auto}}
 
 .account-follow-setup{margin-top:22px;padding:18px 0 0;border-top:1px solid #dce5d1}.account-follow-heading{display:flex;align-items:center;gap:8px;color:#526f40}.account-follow-heading h3{font-size:13px;font-weight:600;margin:0}.account-follow-heading .tag{margin-left:auto;white-space:nowrap}.account-follow-setup p{font-size:11px;line-height:1.75;color:#6b805c;margin:10px 0 14px}.account-follow-setup .account-follow-hint{font-size:10px;margin:10px 0 0}.account-follow-setup .account-follow-result{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;color:#43633b;margin-bottom:0}.account-follow-setup code{font-size:inherit;overflow-wrap:anywhere}.account-follow-setup .button{white-space:normal;min-height:40px}.account-disconnect{margin-top:20px;padding-top:16px;border-top:1px solid #dce5d1}.account-disconnect .text-button{font-size:11px;margin:0}
+
+.preview-quick-reply{display:inline-block;border:1px solid #8ca77b;border-radius:18px;padding:8px 16px;margin-top:14px;color:#43633b;background:#f7faf2;font-size:12px}

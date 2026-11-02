@@ -7,7 +7,7 @@ process.env.LIVE_SENDS_ENABLED='true';
 const {db,init}=await import('../lib/db.mjs');
 const {encrypt}=await import('../lib/core.mjs');
 const {processComment,deliver}=await import('../lib/engine.mjs');
-const {dispatchEvent,inngest}=await import('../lib/jobs.mjs');
+const {dispatchEvent,inngest,runDelivery}=await import('../lib/jobs.mjs');
 const {checkFollow}=await import('../lib/follow.mjs');
 await init();
 await db().execute({sql:'INSERT INTO campaigns VALUES(?,?,?,CURRENT_TIMESTAMP)',args:['c','owner',JSON.stringify({name:'Gated',active:true,accountId:'ig',keywords:['GUIDE'],triggerType:'any',matchMode:'contains',dmTemplate:'RESOURCE',deliveryMode:'after-follow'})]});
@@ -29,4 +29,35 @@ test('STOP and CHECK in the same signed payload cannot release a resource',async
  await dispatchEvent('stop-webhook',{entry:[{id:'ig',messaging:[{sender:{id:'recipient'},timestamp:Date.now(),message:{text:'STOP',mid:'stop'}},{sender:{id:'recipient'},timestamp:Date.now(),message:{text:'CHECK '+r.id.slice(0,8),mid:'check-stop'}}]}]});
  const event=events.at(-1);assert.equal(event.data.id,r.id);let calls=0;global.fetch=async()=>{calls++;throw Error('should not call');};const outcome=await checkFollow(event.data);assert.equal(outcome.status,'skipped');assert.equal(calls,0);
  const future=await processComment('owner',input('after-stop'));assert.equal(future.status,'skipped');assert.equal(future.reason,'This person opted out.');
+});
+
+test('a button during cooldown waits durably and automatically releases after a true follow check',async()=>{
+ await db().execute('DELETE FROM opt_outs');
+ const r=await processComment('owner',input('cooldown-comment'));
+ global.fetch=async()=>Response.json({recipient_id:'recipient',message_id:'cooldown-request'});await deliver(r.id);
+ let clock=Date.now();
+ const text={sender:{id:'recipient'},timestamp:clock,message:{text:'CHECK '+r.id.slice(0,8),mid:'cooldown-text'}};
+ await dispatchEvent('cooldown-text',{entry:[{id:'ig',messaging:[text]}]});
+ global.fetch=async(url,opts)=>Response.json(opts.method==='POST'?{message_id:'buttons'}:{is_user_follow_business:false});
+ assert.equal((await checkFollow(events.at(-1).data,clock)).status,'awaiting-follow');
+ clock+=1000;
+ const tap={sender:{id:'recipient'},timestamp:clock,postback:{mid:'button-message',payload:'ahoy:follow:'+r.id}};
+ await dispatchEvent('cooldown-tap',{entry:[{id:'ig',messaging:[tap]}]});
+ const event=events.at(-1),sleeps=[],steps=[];let sends=0;
+ global.fetch=async(url,opts)=>{if(opts.method==='POST')sends++;return Response.json(opts.method==='POST'?{message_id:'resource'}:{is_user_follow_business:true});};
+ const step={run:async(name,fn)=>{steps.push(name);return fn();},sleep:async(name,ms)=>{assert.equal(sends,0);sleeps.push(ms);clock+=ms;}};
+ const result=await runDelivery({event,step},data=>checkFollow(data,clock));
+ assert.equal(result.status,'sent');assert.equal(sleeps.length,1);assert.ok(sleeps[0]>=29000&&sleeps[0]<=30250);assert.equal(sends,1);assert.ok(steps.includes('follow-recheck-1'));
+ await runDelivery({event,step},data=>checkFollow(data,clock));assert.equal(sends,1);assert.equal(sleeps.length,1);
+});
+test('STOP received while a button waits out cooldown still prevents release',async()=>{
+ await db().execute('DELETE FROM opt_outs');
+ const r=await processComment('owner',input('cooldown-stop-comment'));
+ global.fetch=async()=>Response.json({recipient_id:'recipient',message_id:'request'});await deliver(r.id);
+ let clock=Date.now();
+ await dispatchEvent('consent-before-stop',{entry:[{id:'ig',messaging:[{sender:{id:'recipient'},timestamp:clock,message:{text:'CHECK '+r.id.slice(0,8),mid:'consent-before-stop'}}]}]});
+ const event=events.at(-1);await db().execute({sql:'UPDATE follow_requests SET check_after=? WHERE activity_id=?',args:[clock+10000,r.id]});
+ let calls=0;global.fetch=async()=>{calls++;throw Error('resource must stay withheld');};
+ const step={run:async(name,fn)=>fn(),sleep:async(name,ms)=>{clock+=ms;await dispatchEvent('stop-during-sleep',{entry:[{id:'ig',messaging:[{sender:{id:'recipient'},timestamp:clock,message:{text:'STOP',mid:'stop-during-sleep'}}]}]});}};
+ const result=await runDelivery({event,step},data=>checkFollow(data,clock));assert.equal(result.status,'skipped');assert.equal(calls,0);
 });
